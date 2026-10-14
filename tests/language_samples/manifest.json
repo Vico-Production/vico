@@ -1,0 +1,14 @@
+[
+  {"file": "", "language": "en", "expected_text": "Create a folder called Hackathon", "expected_tool": "create_folder", "consent": true},
+  {"file": "", "language": "en", "expected_text": "Find my attendance notes", "expected_tool": "find_files", "consent": true},
+  {"file": "", "language": "en", "expected_text": "Open Notepad", "expected_tool": "open_app", "consent": true},
+  {"file": "", "language": "en", "expected_text": "Show me the files in my workspace", "expected_tool": "list_folder", "consent": true},
+  {"file": "", "language": "en", "expected_text": "Open bbc.com in the browser", "expected_tool": "browser_open", "consent": true},
+  {"file": "", "language": "yo", "expected_text": "Ṣẹ̀dá fóldà tí a ń pè ní Hackathon", "expected_tool": "create_folder", "consent": true},
+  {"file": "", "language": "yo", "expected_text": "Wá àwọn àkọsílẹ̀ iṣẹ́ mi", "expected_tool": "find_files", "consent": true},
+  {"file": "", "language": "yo", "expected_text": "Ṣí Notepad", "expected_tool": "open_app", "consent": true},
+  {"file": "", "language": "ha", "expected_text": "Ƙirƙiri babban fayil mai suna Hackathon", "expected_tool": "create_folder", "consent": true},
+  {"file": "", "language": "ha", "expected_text": "Bude Notepad", "expected_tool": "open_app", "consent": true},
+  {"file": "", "language": "ig", "expected_text": "Mepụta folda aha ya bụ Hackathon", "expected_tool": "create_folder", "consent": true},
+  {"file": "", "language": "ig", "expected_text": "Mepee Notepad", "expected_tool": "open_app", "consent": true}
+]

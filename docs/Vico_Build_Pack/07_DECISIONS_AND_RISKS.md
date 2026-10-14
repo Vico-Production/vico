@@ -9,6 +9,9 @@
 - Free-only resources. Trial credits that require billing are NOT an acceptable mandatory dependency.
 - Offline fallback remains limited; entire multilingual spoken agent not promised offline.
 - Hackathon demo in 2–3 days, quality prioritized over breadth.
+- **2026-10-14: Platforms** — Windows first, Linux second from the same codebase behind a platform adapter, macOS later. See `docs/PLATFORMS.md`.
+- **2026-10-14: Implementation choices** — browser control drives the installed Edge/Chrome through Playwright with a separate Vico profile; audio is captured by the engine (PortAudio) and kept in memory only; speech output uses the operating system's voices; tools take checked paths instead of opaque file IDs; deletion goes to the Recycle Bin/Trash.
+- **2026-10-14: Agent Mode has total control of the laptop and browser**, with an approval switch on by default. This supersedes the earlier 8-tool-only and no-browser-takeover limits. Hard limits stay: no payments, no typing passwords or card details, no deletion without separate confirmation. Risk: a web page or document could try to steer the agent (prompt injection), so the approval step is the main defence and should be tested with adversarial pages.
 
 ## Current risks (likelihood/impact/action)
 | Risk | L | I | Mitigation |

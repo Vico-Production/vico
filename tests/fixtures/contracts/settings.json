@@ -1,0 +1,26 @@
+{
+  "api_version": "1",
+  "ok": true,
+  "data": {
+    "onboarding_complete": false,
+    "language": "en",
+    "interpreter_source": "en",
+    "interpreter_target": "yo",
+    "cloud_consent": false,
+    "require_approval": true,
+    "allow_send_without_approval": false,
+    "workspace": "C:/Users/demo/Documents/VicoDemo",
+    "allowed_roots": [
+      "~"
+    ],
+    "stt_provider": "groq",
+    "llm_provider": "groq",
+    "fallback_consent": false,
+    "stt_model": null,
+    "llm_model": null,
+    "daily_request_budget": 500,
+    "max_steps": 12,
+    "browser_channel": "auto"
+  },
+  "error": null
+}

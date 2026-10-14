@@ -1,0 +1,54 @@
+{
+  "api_version": "1",
+  "ok": true,
+  "data": {
+    "id": "abc123def456",
+    "state": "awaiting_approval",
+    "mode": "cloud",
+    "language": "yo",
+    "text": "Ṣẹ̀dá fóldà Demo",
+    "original": "Ṣẹ̀dá fóldà Demo",
+    "canonical": "Create folder Demo",
+    "steps": [
+      {
+        "id": "st01",
+        "tool": "create_folder",
+        "arguments": {
+          "path": "Demo"
+        },
+        "explanation": "Create the folder",
+        "effect": "Create the folder ~/Documents/VicoDemo/Demo",
+        "targets": [
+          "C:/Users/demo/Documents/VicoDemo/Demo"
+        ],
+        "outcome": "approval_required",
+        "reason": "Approval is switched on.",
+        "content_upload": false,
+        "approval": "pending",
+        "status": "awaiting_approval",
+        "message": "",
+        "verification": "",
+        "verified": false,
+        "data": {}
+      }
+    ],
+    "pending_step_id": "st01",
+    "question": null,
+    "message": null,
+    "message_localized": null,
+    "error": null,
+    "timeline": [
+      {
+        "state": "normalizing",
+        "at": "2026-10-14T16:51:28.972+00:00",
+        "note": "Heard"
+      },
+      {
+        "state": "awaiting_approval",
+        "at": "2026-10-14T16:51:28.972+00:00",
+        "note": "Create the folder ~/Documents/VicoDemo/Demo"
+      }
+    ]
+  },
+  "error": null
+}

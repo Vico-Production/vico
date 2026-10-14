@@ -4,10 +4,11 @@
 Implement the eight real laptop actions and verify their effects instead of returning mock success messages.
 
 ## Scope
-- Implement `create_folder`, `find_files`, `open_file`, `open_app`, `save_note`, `read_text`, `summarize_document`, and `list_folder` handlers.
-- Keep every file operation inside the approved demo workspace.
-- Build an index that exposes opaque file IDs instead of arbitrary paths.
-- Restrict `open_app` to fixed keys such as Notepad, Calculator, and VS Code when installed.
+Updated 2026-10-14 for total control (see 07_DECISIONS_AND_RISKS.md):
+- Implement the original eight handlers plus `move_path`, `delete_path`, `list_apps`, browser tools, desktop input tools and `run_command`.
+- Keep every file operation inside the user's allowed folders (default: home folder); relative paths resolve inside the workspace.
+- Tools take canonical paths checked by the path policy (opaque file IDs were dropped so multi-step plans can refer to files).
+- `open_app` resolves installed apps by name (built-ins, Start Menu shortcuts, `.desktop` entries); never a model-supplied executable path.
 - Make folder creation idempotent and prevent note overwrite in P0.
 - Keep summarization execution split: safely read the approved excerpt, then pass it to the provider interface owned by Task 05.
 - Add a verifier for directory/file existence, safe process launch status, and returned listings.

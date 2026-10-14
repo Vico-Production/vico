@@ -24,7 +24,7 @@ Popular desktop assistants inadequately serve local languages and may rely on En
 
 ## 3. MVP features (P0)
 - Windows desktop UI; microphone push-to-talk, language picker (English/Yoruba/Hausa/Igbo), editable transcript, keyboard fallback, operation status.
-- Agent Mode: 8 real tools (open known app, create folder, search allowed directory, open selected file, save note, summarize approved local text, list directory, launch local music file). Only known installed programs, only user-allowed paths.
+- Agent Mode: total control of the laptop and browser. The agent can open apps and files, create, move and save files, open the browser, navigate, click, type and read page content, and run multi-step tasks. Every step shows its exact effect and waits for approval while the approval switch is on (default). Hard limits stay on regardless: no payments, no typing passwords or card details, no deletion without a separate explicit confirmation.
 - Interpreter Mode: translate typed texts among four languages using a validated provider; speak one English↔Nigerian-language example; show original + translated text and per-language confidence caveat; English TTS + browser/device speech only if supported; never fake audio support.
 - Cloud adapters: `SpeechProvider`, `TranslationProvider`, `ReasoningProvider`, `TTSProvider`, with health/status and explicit cost-free configuration. Secrets stored server-side or OS secure storage, not frontend bundles.
 - Agent engine: constrained JSON action plan, strict schema, no arbitrary code generation for execution, preflight, consent, act, verify, log.
@@ -36,10 +36,10 @@ Popular desktop assistants inadequately serve local languages and may rely on En
 - Microphone/translation conversation alternating turns; no full-duplex simultaneous interpretation.
 - ggwave acoustic short-message text transfer between two machines (separate from core translation).
 - Customizable quick-action macros and local simple document summarization if remote quota available.
-- Read-only browser actions with explicit per-site scope. No passwords, payments, or posting.
+- Browser control is moved into P0 under total control (see Agent Mode above). Passwords and payments remain blocked.
 
 ## 5. Explicit non-goals
-Perfect multilingual ASR, device-independent unlimited computer control, real-time zero-delay interpretation, full offline complex AI on 4 GB RAM, unattended automation, full OS administrative privileges, processing private files without consent, unsupported phone versions.
+Perfect multilingual ASR, real-time zero-delay interpretation, full offline complex AI on 4 GB RAM, unattended automation, full OS administrative privileges, processing private files without consent, unsupported phone versions.
 
 ## 6. User experiences
 ### Onboarding

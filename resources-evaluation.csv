@@ -1,0 +1,27 @@
+resource,repository,version_used,license,free_tier_constraints,windows_support,linux_support,security_exposure,decision,sample_result,checked_on
+Tauri,https://github.com/tauri-apps/tauri,2.x (cli 2.12.2),MIT OR Apache-2.0,none,yes (WebView2),yes (WebKitGTK),"app commands only; CSP set; no shell plugin",adopted,"debug build compiled and launched on Windows 11",2026-10-14
+React,https://github.com/facebook/react,18.3.1,MIT,none,yes,yes,UI only,adopted,"UI tests pass",2026-10-14
+Vite,https://github.com/vitejs/vite,6.4.4,MIT,none,yes,yes,dev server bound to 127.0.0.1,adopted,"production build 58 KB gzipped JS",2026-10-14
+FastAPI,https://github.com/fastapi/fastapi,see uv.lock,MIT,none,yes,yes,"loopback only, bearer token, origin check, docs disabled",adopted,"sidecar smoke test: 401 without token, health OK with token",2026-10-14
+Pydantic,https://github.com/pydantic/pydantic,2.x,MIT,none,yes,yes,strict schemas (extra=forbid),adopted,"schema tests pass",2026-10-14
+pywinauto,https://github.com/pywinauto/pywinauto,0.6.9,BSD-3-Clause,none,yes,no,"types/clicks into other apps; password fields refused",adopted (Windows desktop control only),"key mapping verified; window enumeration via Win32",2026-10-14
+PyAutoGUI,https://github.com/asweigart/pyautogui,-,BSD-3-Clause,none,yes,yes,coordinate clicking is fragile,rejected,-,2026-10-14
+Playwright (Python),https://github.com/microsoft/playwright,see uv.lock,Apache-2.0,none,"yes (uses installed Edge)","yes (Chrome or downloaded Chromium)","separate browser profile; payment/password guards",adopted for browser control,"not yet exercised against live sites in this build",2026-10-14
+GroqCloud API,https://console.groq.com/docs/rate-limits,REST (OpenAI-compatible),"service terms","free plan with per-model rate limits; models chosen from the live /models list",n/a,n/a,"audio and text leave the device with consent",adopted as default STT + LLM,"not yet called with a real key (no key available during build)",2026-10-14
+Groq SDK,https://github.com/groq/groq-python,-,Apache-2.0,-,-,-,-,"not used (plain HTTPX keeps dependencies small)",-,2026-10-14
+Gemini API,https://ai.google.dev/gemini-api/docs/pricing,REST v1beta,"service terms","free tier on some models only; free-tier data may be used for product improvement",n/a,n/a,"key sent in header, never URL",adopted as alternative/fallback,"not yet called with a real key",2026-10-14
+Google GenAI SDK,https://github.com/googleapis/python-genai,-,Apache-2.0,-,-,-,-,"not used (plain HTTPX)",-,2026-10-14
+SQLite,https://www.sqlite.org/,Python stdlib,Public domain,none,yes,yes,"no secrets or content stored",adopted,"corrupt-database recovery tested",2026-10-14
+keyring,https://github.com/jaraco/keyring,see uv.lock,MIT,none,"yes (Credential Manager)","yes (Secret Service)","stores API keys",adopted,-,2026-10-14
+python-sounddevice,https://github.com/spatialaudio/python-sounddevice,0.5.6,MIT,none,yes (bundled PortAudio),"yes (needs libportaudio2)","audio kept in memory only",adopted,"recorder logic tested with a fake stream; real mic not yet tested",2026-10-14
+pytest,https://github.com/pytest-dev/pytest,8.x,MIT,none,yes,yes,dev only,adopted,"tests pass",2026-10-14
+LangGraph,https://github.com/langchain-ai/langgraph,-,MIT,-,-,-,-,"not used; plain state machine is enough",-,2026-10-14
+faster-whisper,https://github.com/SYSTRAN/faster-whisper,-,MIT (weights vary),-,-,-,-,"deferred: offline STT needs a CPU benchmark on 4 GB hardware",-,2026-10-14
+whisper.cpp,https://github.com/ggml-org/whisper.cpp,-,MIT (weights vary),-,-,-,-,deferred (same reason),-,2026-10-14
+NaijaVox-2.0,https://huggingface.co/Axiveri/NaijaVox-2.0,-,Apache-2.0 per model card,-,-,-,-,"deferred: large Whisper-v3 model, not suitable for 4 GB local use",-,2026-10-14
+NLLB-200 distilled 600M,https://huggingface.co/facebook/nllb-200-distilled-600M,-,CC-BY-NC-4.0,-,-,-,-,"rejected: noncommercial license",-,2026-10-14
+ggwave,https://github.com/ggerganov/ggwave,-,MIT,-,-,-,-,deferred (P1 stretch),-,2026-10-14
+Piper,https://github.com/OHF-Voice/piper1-gpl,-,GPL-3.0 (voices vary),-,-,-,-,"deferred: system voices used instead; no verified Yoruba/Hausa/Igbo voices",-,2026-10-14
+Argos Translate,https://github.com/argosopentech/argos-translate,-,MIT (packs vary),-,-,-,-,"deferred: no confirmed yo/ha/ig packs",-,2026-10-14
+AfriLingua,https://github.com/PrincessEC/AfriLingua,-,unverified,-,-,-,-,"not used: code health and weights unverified",-,2026-10-14
+naija-asr-backend,https://github.com/Prosper700/naija-asr-backend,-,unverified,-,-,-,-,"not used: reference only",-,2026-10-14

@@ -13,7 +13,7 @@ Create the monorepo skeleton and the shared API contracts that every other works
 - Add formatting, linting, type-checking, and basic CI configuration.
 
 ## Decisions fixed by this task
-- P0 has exactly eight tools: `create_folder`, `find_files`, `open_file`, `open_app`, `save_note`, `read_text`, `summarize_document`, and `list_folder`.
+- P0 starts with the eight tools `create_folder`, `find_files`, `open_file`, `open_app`, `save_note`, `read_text`, `summarize_document`, and `list_folder`, and is extended to total control of the laptop and browser under the approval switch (decided 2026-10-14). Tool contracts must allow new action types, with the hard limits (no payments, no typing passwords or card details, no deletion without separate confirmation) enforced in the policy layer.
 - `play_audio_file` is a P1 stretch feature and must not block P0.
 - No PDF content reading in P0; PDF files may be found but not opened or summarized until a parser is approved.
 - Shared contracts are versioned under `/api/v1` and reject unknown fields.

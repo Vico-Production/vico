@@ -1,0 +1,34 @@
+{
+  "api_version": "1",
+  "ok": true,
+  "data": {
+    "version": "0.1.0",
+    "platform": "win32",
+    "adapter": "windows",
+    "online": true,
+    "cloud_ready": true,
+    "speech_ready": true,
+    "cloud_consent": true,
+    "providers": {
+      "groq": {
+        "status": "ready",
+        "configured": true,
+        "requests_today": 3,
+        "daily_budget": 500,
+        "audio_seconds_today": 12.5,
+        "rate_limited": false
+      },
+      "gemini": {
+        "status": "ready",
+        "configured": true,
+        "requests_today": 3,
+        "daily_budget": 500,
+        "audio_seconds_today": 12.5,
+        "rate_limited": false
+      }
+    },
+    "recording": false,
+    "browser_open": false
+  },
+  "error": null
+}

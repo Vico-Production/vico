@@ -1,0 +1,11 @@
+{
+  "api_version": "1",
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "policy_denied",
+    "message": "'C:/Windows' is outside the folders Vico may use.",
+    "retryable": false,
+    "retry_after_s": null
+  }
+}

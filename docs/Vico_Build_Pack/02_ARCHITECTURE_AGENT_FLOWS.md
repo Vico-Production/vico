@@ -62,7 +62,7 @@ Schemas require `additionalProperties=false`, allowlisted paths, parameter lengt
 - `play_audio_file` (P1 if time): only in workspace and user-approved files.
 
 ## Tool permissions
-`LOW`: list, search, inspect metadata in nominated workspace; `MEDIUM`: create folder, save note, open safe file or app; `HIGH`: content sent to cloud, delete/move/overwrite, browser submission; prohibit destructive and external-send operations in MVP. Always display path and effect in approval UI.
+Total-control model (decided 2026-10-14): the approval switch (default on) gates every step. With the switch on, each step shows its exact effect and waits for approval. With the switch off, steps run without asking. In both modes the hard limits apply: no payments, no typing passwords or card details, and deletion requires a separate explicit confirmation. Always display the path, URL or target and the effect in the approval UI. Sending messages, submitting forms and posting need approval even with the switch off unless the user has explicitly allowed that action type. Verify each step's effect before reporting it as done.
 
 ## Reasoner output contract
 ```json

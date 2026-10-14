@@ -1,0 +1,18 @@
+{
+  "name": "vico",
+  "private": true,
+  "description": "Root commands for the Vico monorepo",
+  "scripts": {
+    "install:all": "cd services/agent && uv sync && cd ../../apps/desktop && npm ci",
+    "dev": "cd apps/desktop && npm run tauri dev",
+    "lint": "cd services/agent && uv run ruff check app ../../tests",
+    "typecheck": "cd services/agent && uv run mypy app && cd ../../apps/desktop && npm run typecheck",
+    "test": "npm run test:py && npm run test:ui && npm run test:rust",
+    "test:py": "cd services/agent && uv run pytest",
+    "test:ui": "cd apps/desktop && npm test",
+    "test:rust": "cd apps/desktop/src-tauri && cargo test",
+    "seed": "uv run --project services/agent python scripts/seed_demo.py",
+    "build:sidecar": "cd services/agent && uv run python ../../scripts/build_sidecar.py",
+    "build": "npm run build:sidecar && cd apps/desktop && npx tauri build --config src-tauri/tauri.release.conf.json"
+  }
+}

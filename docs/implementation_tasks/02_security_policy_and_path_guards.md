@@ -12,11 +12,12 @@ Build the security boundary before any model or operating-system operation can e
 - Establish operation timeouts, maximum input lengths, and one-tool-call-per-plan enforcement.
 
 ## Approval matrix
-- `find_files` and `list_folder`: automatic only inside the nominated workspace.
-- `read_text`: requires explicit selection of an indexed file, but no cloud-upload approval.
-- `create_folder`, `save_note`, `open_file`, and `open_app`: require action approval.
-- `summarize_document`: requires action approval plus a separate content-upload approval.
-- Delete, move, overwrite, arbitrary executable paths, scripts, shell commands, URLs, and paths outside the workspace are denied in P0.
+Updated 2026-10-14 for total control with an approval switch (on by default):
+- Metadata reads (`list_folder`, `find_files`, `list_apps`, `list_windows`): run without asking, inside allowed folders.
+- Ordinary actions (`read_text`, `create_folder`, `save_note`, `move_path`, `open_file`, `open_app`, browser and desktop tools): ask when the switch is on, run when it is off.
+- `delete_path` (to Recycle Bin/Trash), `run_command`, and `summarize_document` (content upload): always ask with an extra confirmation, even with the switch off.
+- Sends, posts and form submissions: always ask unless the user allows them in Settings.
+- Denied regardless of the switch: payments, typing passwords/PINs/card details, paths outside the allowed folders, writes into system folders, overwriting existing files, unknown tools.
 
 ## Deliverables
 - `services/agent/app/agent/schemas.py`
