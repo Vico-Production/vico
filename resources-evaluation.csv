@@ -1,5 +1,5 @@
 resource,repository,version_used,license,free_tier_constraints,windows_support,linux_support,security_exposure,decision,sample_result,checked_on
-Tauri,https://github.com/tauri-apps/tauri,2.x (cli 2.12.2),MIT OR Apache-2.0,none,yes (WebView2),yes (WebKitGTK),"app commands only; CSP set; no shell plugin",adopted,"debug build compiled and launched on Windows 11",2026-10-14
+Tauri,https://github.com/tauri-apps/tauri,2.x (cli 2.12.2),MIT OR Apache-2.0,none,yes (WebView2),yes (WebKitGTK),"app commands only; CSP set; no shell plugin",adopted,"not compiled locally: this machine has no MSVC Build Tools and a broken MinGW; CI compiles it on windows-latest and ubuntu",2026-10-14
 React,https://github.com/facebook/react,18.3.1,MIT,none,yes,yes,UI only,adopted,"UI tests pass",2026-10-14
 Vite,https://github.com/vitejs/vite,6.4.4,MIT,none,yes,yes,dev server bound to 127.0.0.1,adopted,"production build 58 KB gzipped JS",2026-10-14
 FastAPI,https://github.com/fastapi/fastapi,see uv.lock,MIT,none,yes,yes,"loopback only, bearer token, origin check, docs disabled",adopted,"sidecar smoke test: 401 without token, health OK with token",2026-10-14

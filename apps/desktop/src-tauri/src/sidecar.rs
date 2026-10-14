@@ -12,7 +12,8 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-const READY_TIMEOUT: Duration = Duration::from_secs(60);
+// Generous: the first launch on a slow laptop can be delayed by antivirus scanning.
+const READY_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_RESTARTS: u32 = 3;
 
 #[derive(Default)]
@@ -116,14 +117,15 @@ impl Sidecar {
             }
         }
         let name = if cfg!(windows) { "vico-agent.exe" } else { "vico-agent" };
+        // Release builds ship the engine folder (PyInstaller one-dir) as an app resource.
         let mut candidates = Vec::new();
+        if let Some(dir) = resource_dir {
+            candidates.push(dir.join("engine").join(name));
+        }
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                candidates.push(dir.join(name));
+                candidates.push(dir.join("engine").join(name));
             }
-        }
-        if let Some(dir) = resource_dir {
-            candidates.push(dir.join(name));
         }
         candidates
             .into_iter()

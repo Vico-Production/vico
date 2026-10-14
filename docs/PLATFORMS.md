@@ -26,7 +26,7 @@ Order: **Windows first, Linux second (same codebase), macOS later.** Everything 
 ## Release checklist per platform
 
 - [ ] Clean install, first launch, onboarding, quit, relaunch, uninstall
-- [ ] Engine starts within 60 s on first launch (PyInstaller one-file unpacks itself)
+- [ ] Engine starts within a few seconds (it ships as a PyInstaller one-dir folder; the shell waits up to 120 s)
 - [ ] Typed offline `create folder Demo`
 - [ ] One spoken English action
 - [ ] Browser: open a page, read it, click a link

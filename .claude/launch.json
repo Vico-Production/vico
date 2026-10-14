@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vico-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/desktop", "run", "dev"],
+      "port": 1420
+    }
+  ]
+}

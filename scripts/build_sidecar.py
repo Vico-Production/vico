@@ -1,6 +1,9 @@
-"""Package the Python engine as one executable for Tauri's externalBin.
+"""Package the Python engine as a folder (PyInstaller one-dir) for the Tauri bundle.
 
-Output: apps/desktop/src-tauri/binaries/vico-agent-<rust target triple>[.exe]
+Output: apps/desktop/src-tauri/engine/  (vico-agent[.exe] plus its _internal folder)
+The release config ships this folder as an app resource. One-dir starts in seconds;
+one-file unpacks ~60 MB to a temp folder on every launch, which took minutes on a
+slow laptop.
 
 Run from the repo root with the agent's environment:
     cd services/agent && uv run python ../../scripts/build_sidecar.py
@@ -16,25 +19,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT = ROOT / "services" / "agent"
-BINARIES = ROOT / "apps" / "desktop" / "src-tauri" / "binaries"
-
-
-def target_triple() -> str:
-    out = subprocess.run(["rustc", "-vV"], capture_output=True, text=True, check=True).stdout
-    for line in out.splitlines():
-        if line.startswith("host:"):
-            return line.split(":", 1)[1].strip()
-    raise SystemExit("could not read the Rust host triple from `rustc -vV`")
+ENGINE = ROOT / "apps" / "desktop" / "src-tauri" / "engine"
 
 
 def main() -> None:
-    triple = target_triple()
     ext = ".exe" if sys.platform == "win32" else ""
     work = AGENT / "build"
     dist = AGENT / "dist"
     args = [
         sys.executable, "-m", "PyInstaller",
-        "--noconfirm", "--clean", "--onefile",
+        "--noconfirm", "--clean", "--onedir",
         "--name", "vico-agent",
         "--distpath", str(dist), "--workpath", str(work), "--specpath", str(work),
         "--paths", str(AGENT),
@@ -54,11 +48,12 @@ def main() -> None:
     print("running:", " ".join(args))
     subprocess.run(args, check=True, cwd=AGENT)
 
-    built = dist / f"vico-agent{ext}"
-    BINARIES.mkdir(parents=True, exist_ok=True)
-    target = BINARIES / f"vico-agent-{triple}{ext}"
-    shutil.copy2(built, target)
-    print(f"engine packaged: {target} ({target.stat().st_size / 1e6:.1f} MB)")
+    built = dist / "vico-agent"
+    if ENGINE.exists():
+        shutil.rmtree(ENGINE)
+    shutil.copytree(built, ENGINE)
+    size = sum(f.stat().st_size for f in ENGINE.rglob("*") if f.is_file())
+    print(f"engine packaged: {ENGINE / ('vico-agent' + ext)} ({size / 1e6:.1f} MB folder)")
 
 
 if __name__ == "__main__":

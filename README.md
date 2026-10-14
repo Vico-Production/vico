@@ -110,6 +110,9 @@ docs/                    build pack, implementation tasks, API contract, demo gu
 | Offline typed commands work with no provider | Automated tests |
 | Engine only on 127.0.0.1, token required, exits with the app | Tested on Windows 11 |
 | Opening an app is verified by its window appearing | Tested on Windows 11 (Notepad) |
+| UI end to end: onboarding, typed offline command, approval, verified folder | Tested in a browser against the real engine on Windows 11 |
+| Packaged engine (PyInstaller folder) runs a real task | Tested on Windows 11: 22 s first start on a heavily loaded laptop, ~69 MB memory |
+| Rust desktop shell compiles and launches | **Not yet on this machine** (missing MSVC Build Tools); compiled by CI |
 | Speech recognition accuracy for each language | **Not measured** — run `scripts/benchmark_languages.py` with consenting speakers |
 | Translation quality | **Not measured** |
 | Memory and startup time on a 4 GB laptop | **Not measured** |

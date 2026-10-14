@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -135,6 +136,12 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     app = FastAPI(title="Vico agent", version=VERSION, lifespan=lifespan, docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.add_middleware(TokenMiddleware, token=token)
+    if os.environ.get("VICO_DEV_CORS") == "1":
+        # Browser-only UI development (vite on :1420). Never enabled in the packaged app.
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:1420", "http://127.0.0.1:1420"],
+                           allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type"])
 
     @app.exception_handler(VicoError)
     async def vico_error(_: Request, exc: VicoError):
