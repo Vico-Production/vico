@@ -1,0 +1,23 @@
+Tauri https://github.com/tauri-apps/tauri
+React https://github.com/facebook/react
+Vite https://github.com/vitejs/vite
+FastAPI https://github.com/fastapi/fastapi
+Pydantic https://github.com/pydantic/pydantic
+pywinauto https://github.com/pywinauto/pywinauto
+PyAutoGUI https://github.com/asweigart/pyautogui
+Groq SDK https://github.com/groq/groq-python
+Google GenAI SDK https://github.com/googleapis/python-genai
+pytest https://github.com/pytest-dev/pytest
+Playwright https://github.com/microsoft/playwright
+LangGraph https://github.com/langchain-ai/langgraph
+faster-whisper https://github.com/SYSTRAN/faster-whisper
+whisper.cpp https://github.com/ggml-org/whisper.cpp
+NaijaVox https://huggingface.co/Axiveri/NaijaVox-2.0
+NLLB https://huggingface.co/facebook/nllb-200-distilled-600M
+ggwave https://github.com/ggerganov/ggwave
+Piper https://github.com/OHF-Voice/piper1-gpl
+Argos https://github.com/argosopentech/argos-translate
+AfriLingua https://github.com/PrincessEC/AfriLingua
+Naija ASR https://github.com/Prosper700/naija-asr-backend
+Gemini pricing https://ai.google.dev/gemini-api/docs/pricing
+Groq rate limits https://console.groq.com/docs/rate-limits
