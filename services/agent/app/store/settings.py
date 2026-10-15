@@ -38,6 +38,8 @@ class Settings(StrictModel):
     speech_server_url: str | None = None
     # Speak answers aloud when a speech server with voices is set up.
     voice_replies: bool = True
+    # Listen on this computer for "Hey Vico" (nothing heard while waiting leaves the computer).
+    wake_word: bool = True
 
 
 class SettingsPatch(StrictModel):
@@ -57,6 +59,7 @@ class SettingsPatch(StrictModel):
     browser_channel: Literal["auto", "msedge", "chrome", "chromium"] | None = None
     speech_server_url: str | None = Field(default=None, max_length=300)
     voice_replies: bool | None = None
+    wake_word: bool | None = None
 
 
 class SettingsRepository:
@@ -89,3 +92,8 @@ class SettingsRepository:
                 (key, json.dumps(value)),
             )
         return merged
+
+    def reset(self) -> Settings:
+        """Forget every setting, so the next summon starts at first-run setup."""
+        self.db.execute("DELETE FROM settings")
+        return Settings()

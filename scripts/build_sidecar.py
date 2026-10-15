@@ -36,6 +36,7 @@ def main() -> None:
         "--collect-submodules", "uvicorn",
         "--collect-submodules", "keyring.backends",
         "--hidden-import", "send2trash",
+        "--collect-all", "vosk",  # loaded lazily by the wake phrase listener, with its native library
         "--exclude-module", "tkinter",
         "--exclude-module", "pytest",
     ]

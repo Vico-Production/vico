@@ -118,3 +118,11 @@ def test_languages_are_labelled_untested_by_default(client):
 def test_audio_stop_without_recording(client):
     r = client.post("/api/v1/audio/stop", headers=AUTH, json={"transcribe": True})
     assert r.status_code == 409 and r.json()["error"]["code"] == "conflict"
+
+
+def test_reset_removes_codes_and_settings(client):
+    client.put("/api/v1/secrets/gemini", headers=AUTH, json={"api_key": "AIzaSomethingSecret123"})
+    client.put("/api/v1/settings", headers=AUTH, json={"onboarding_complete": True})
+    assert client.post("/api/v1/reset", headers=AUTH).json()["data"]["reset"] is True
+    assert client.get("/api/v1/secrets", headers=AUTH).json()["data"]["gemini"] is False
+    assert client.get("/api/v1/settings", headers=AUTH).json()["data"]["onboarding_complete"] is False

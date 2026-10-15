@@ -28,6 +28,11 @@ EXCLUDE = ("image", "tts", "live", "embedding", "audio", "aqa", "vision", "learn
 # Both listed as "Free of charge" on the Gemini API pricing page (checked 2026-10-14).
 # Only models the account's live /models list actually returns are used.
 FREE_CHAIN = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+# Speech goes to Flash-Lite first: it answers fastest and transcription needs no deep reasoning.
+SPEECH_CHAIN = ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
+# Thinking costs seconds. Transcription and language detection need none; planning a single
+# step needs little. Both models accept "minimal" and "low" (Gemini thinking docs, 2026-10-15).
+THINKING = {"stt": "minimal", "llm": "low"}
 
 TRANSCRIBE_PROMPT = (
     "Transcribe this speech exactly as spoken. The speaker uses English, Yoruba, Hausa, Igbo or Nigerian Pidgin, "
@@ -59,6 +64,7 @@ class GeminiProvider:
         self._models: list[str] | None = None
         self._list_retry_at = 0.0
         self.models = ModelChain(self.name, quota)
+        self._no_thinking_config: set[str] = set()
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -87,7 +93,7 @@ class GeminiProvider:
             if not explicit:
                 raise
             available = []  # the chosen model can still be tried directly
-        chain = [m for m in FREE_CHAIN if m in available]
+        chain = [m for m in (SPEECH_CHAIN if kind == "stt" else FREE_CHAIN) if m in available]
         if not chain:
             fallback = choose_gemini_model(available)
             chain = [fallback] if fallback else []
@@ -103,11 +109,22 @@ class GeminiProvider:
     def cooldown_s(self) -> float:
         return self.models.cooldown_s()
 
-    async def _generate(self, kind: str, body: dict, audio_seconds: float = 0.0) -> tuple[str, str]:
+    async def _generate(self, kind: str, body: dict, audio_seconds: float = 0.0,
+                        thinking: str | None = None) -> tuple[str, str]:
         async def attempt(model: str, tracker: QuotaTracker) -> str:
+            payload = body
+            if thinking and model not in self._no_thinking_config:
+                config = {**body.get("generationConfig", {}), "thinkingConfig": {"thinkingLevel": thinking}}
+                payload = {**body, "generationConfig": config}
             req = self.client.build_request("POST", f"{BASE_URL}/models/{model}:generateContent",
-                                            headers=self._headers, json=body, timeout=60)
-            data = await send(self.client, self.name, tracker, req, audio_seconds=audio_seconds)
+                                            headers=self._headers, json=payload, timeout=60)
+            try:
+                data = await send(self.client, self.name, tracker, req, audio_seconds=audio_seconds)
+            except VicoError as exc:
+                if payload is body or exc.code is not ErrorCode.VALIDATION_ERROR or "thinking" not in exc.message.lower():
+                    raise
+                self._no_thinking_config.add(model)  # this model rejects the setting: send it plain from now on
+                return await attempt(model, tracker)
             try:
                 parts = data["candidates"][0]["content"]["parts"]
                 return "".join(p.get("text", "") for p in parts)
@@ -125,7 +142,7 @@ class GeminiProvider:
         body = {"systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": user}]}], "generationConfig": config}
         started = time.monotonic()
-        text, model = await self._generate("llm", body)
+        text, model = await self._generate("llm", body, thinking=THINKING["llm"])
         return Completion(text=text, provider=self.name, model=model,
                           latency_ms=int((time.monotonic() - started) * 1000))
 
@@ -137,7 +154,8 @@ class GeminiProvider:
             {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode("ascii")}},
             {"text": prompt}]}], "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
         started = time.monotonic()
-        raw, model = await self._generate("stt", body, audio_seconds=max(0.0, (len(audio) - 44) / 32000))
+        raw, model = await self._generate("stt", body, audio_seconds=max(0.0, (len(audio) - 44) / 32000),
+                                          thinking=THINKING["stt"])
         try:
             data = parse_json_text(raw)
             text = str(data.get("text", "")).strip()

@@ -2,19 +2,25 @@ mod sidecar;
 
 use serde_json::{json, Value};
 use sidecar::Sidecar;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, State, WebviewWindow,
     WindowEvent,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+/// Passed by the sign-in entry, so a login start stays quiet.
+const AUTOSTART_ARG: &str = "--autostart";
 
 struct AppState {
     sidecar: Arc<Sidecar>,
     http: reqwest::Client,
+    autostarted: bool,
+    shortcut: Mutex<String>, // the shortcut that was actually registered ("" if none)
 }
 
 const METHODS: [&str; 4] = ["GET", "POST", "PUT", "DELETE"];
@@ -103,6 +109,12 @@ fn sidecar_status(state: State<'_, AppState>) -> Value {
     state.sidecar.status()
 }
 
+#[tauri::command]
+fn launch_info(state: State<'_, AppState>) -> Value {
+    let shortcut = state.shortcut.lock().map(|s| s.clone()).unwrap_or_default();
+    json!({ "autostart": state.autostarted, "shortcut": shortcut })
+}
+
 /// Size the aura to cover the whole primary screen and park the prompt above the pool.
 fn place_windows(app: &AppHandle) {
     let Some(aura) = app.get_webview_window("aura") else {
@@ -178,34 +190,102 @@ fn summon(app: &AppHandle, event: &str) {
     let _ = app.emit(event, ());
 }
 
-fn register_shortcut(app: &AppHandle) {
-    // Win + Alt + V on Windows/Linux, Cmd + Option + V on macOS. Ctrl + Alt + V if taken.
-    let preferred = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyV);
-    if app.global_shortcut().register(preferred).is_err() {
-        let fallback = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyV);
-        let _ = app.global_shortcut().register(fallback);
+fn shortcut_label(preferred: bool) -> &'static str {
+    match (preferred, cfg!(target_os = "macos"), cfg!(windows)) {
+        (true, true, _) => "Cmd + Option + V",
+        (true, _, true) => "Win + Alt + V",
+        (true, _, _) => "Super + Alt + V",
+        (false, true, _) => "Ctrl + Option + V",
+        (false, _, _) => "Ctrl + Alt + V",
     }
 }
 
-fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let summon_item = MenuItem::with_id(
+/// Win + Alt + V (Cmd + Option + V on macOS), or Ctrl + Alt + V if another app owns it.
+/// Returns the label of the one registered, or "" when neither could be.
+fn register_shortcut(app: &AppHandle) -> String {
+    let preferred = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyV);
+    if app.global_shortcut().register(preferred).is_ok() {
+        return shortcut_label(true).to_string();
+    }
+    let fallback = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyV);
+    if app.global_shortcut().register(fallback).is_ok() {
+        return shortcut_label(false).to_string();
+    }
+    String::new()
+}
+
+/// Start with the computer by default, once. After that the tray toggle decides.
+fn autostart_enabled(app: &AppHandle) -> bool {
+    let manager = app.autolaunch();
+    if cfg!(debug_assertions) {
+        return manager.is_enabled().unwrap_or(false); // never register a development build
+    }
+    if let Ok(dir) = app.path().app_config_dir() {
+        let marker = dir.join("autostart-chosen");
+        if !marker.exists() {
+            let _ = manager.enable();
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(&marker, b"1");
+        }
+    }
+    manager.is_enabled().unwrap_or(false)
+}
+
+fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
+    let summon_label = if shortcut.is_empty() {
+        "Summon Vico".to_string()
+    } else {
+        format!("Summon Vico   ({shortcut})")
+    };
+    let summon_item = MenuItem::with_id(app, "summon", summon_label, true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(
         app,
-        "summon",
-        "Summon Vico   (Win+Alt+V)",
+        "settings",
+        "Settings and access codes",
         true,
         None::<&str>,
     )?;
-    let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+    let autostart_item = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Start when I sign in",
+        true,
+        autostart_enabled(app),
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Vico", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&summon_item, &settings_item, &separator, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &summon_item,
+            &settings_item,
+            &autostart_item,
+            &separator,
+            &quit_item,
+        ],
+    )?;
+    let tooltip = if shortcut.is_empty() {
+        "Vico".to_string()
+    } else {
+        format!("Vico · {shortcut}")
+    };
     let mut tray = TrayIconBuilder::with_id("vico")
-        .tooltip("Vico · Win+Alt+V")
+        .tooltip(tooltip)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "summon" => summon(app, "vico://summon"),
             "settings" => summon(app, "vico://settings"),
+            "autostart" => {
+                // The check mark flips by itself; make the sign-in entry match it.
+                let manager = app.autolaunch();
+                let _ = if manager.is_enabled().unwrap_or(false) {
+                    manager.disable()
+                } else {
+                    manager.enable()
+                };
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -232,10 +312,15 @@ pub fn run() {
         .no_proxy()
         .build()
         .expect("http client");
+    let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             summon(app, "vico://summon");
         }))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![AUTOSTART_ARG]),
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -248,6 +333,8 @@ pub fn run() {
         .manage(AppState {
             sidecar: sidecar.clone(),
             http,
+            autostarted,
+            shortcut: Mutex::new(String::new()),
         })
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -258,8 +345,11 @@ pub fn run() {
             });
             let handle = app.handle().clone();
             place_windows(&handle);
-            register_shortcut(&handle);
-            build_tray(&handle)?;
+            let shortcut = register_shortcut(&handle);
+            if let Ok(mut slot) = state.shortcut.lock() {
+                slot.clone_from(&shortcut);
+            }
+            build_tray(&handle, &shortcut)?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -272,6 +362,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             api_request,
             sidecar_status,
+            launch_info,
             aura_show,
             aura_hide,
             prompt_show,

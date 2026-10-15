@@ -49,7 +49,8 @@ export type Intent =
   | { type: "submit" }
   | { type: "approve"; confirm: boolean }
   | { type: "reject" }
-  | { type: "configured" };
+  | { type: "configured" }
+  | { type: "reset" };
 
 export const STATE_EVENT = "vico://state";
 export const INTENT_EVENT = "vico://intent";
@@ -81,9 +82,11 @@ export const INITIAL: Session = {
   offline: false,
 };
 
-const REVIEW_MS = 1800; // a heard request goes on its own unless the user starts editing
-const SILENCE_MS = 1100; // stop listening after this much quiet following speech
-const SPEECH_LEVEL = 0.07;
+const REVIEW_MS = 900; // a heard request goes on its own unless the user starts editing
+const SILENCE_MS = 800; // stop listening after this much quiet following speech
+const SPEECH_LEVEL = 0.03; // the lowest level that counts as speech, even in a silent room
+const NOISE_MARGIN = 2.5; // speech must be this many times louder than the room
+const ROOM_MAX = 0.06; // louder than this is never just the room
 const DONE_MS = 5200;
 const ERROR_MS = 7000;
 const LEAVE_MS = 900;
@@ -113,6 +116,7 @@ export class VicoDriver {
   private poller: number | null = null;
   private levelPoller: number | null = null;
   private timer: number | null = null;
+  private wakePoller: number | null = null;
   private heard = false;
   private quietSince = 0;
   private lastPhase: Phase = "hidden";
@@ -164,12 +168,39 @@ export class VicoDriver {
 
   // --- entry points ---------------------------------------------------------------------
   async boot() {
-    try {
-      const settings = await api.settings();
-      if (!settings.onboarding_complete) this.set({ ...INITIAL, phase: "setup" });
-    } catch {
-      /* the engine may still be starting; the next summon checks again */
+    // The engine can take a while on its very first start; keep asking for up to a minute.
+    for (let attempt = 0; attempt < 60; attempt++) {
+      try {
+        const settings = await api.settings();
+        if (this.state.phase !== "hidden") return; // the user already summoned Vico
+        if (!settings.onboarding_complete) return this.set({ ...INITIAL, phase: "setup" });
+        const launch = await this.windows.launchInfo?.();
+        if (launch) this.watchForWakePhrase();
+        if (launch && !launch.autostart) {
+          // Opened by hand (or by the installer): show that Vico is running and how to call it.
+          const call = launch.shortcut ? `press ${launch.shortcut}` : "click my tray icon";
+          this.set({ ...INITIAL, phase: "done", narration: "",
+            message: `I'm ready. Say "Hey Vico" or ${call} whenever you need me.`, localized: null });
+          this.timer = window.setTimeout(() => this.leave(), 3200);
+        }
+        return;
+      } catch {
+        await new Promise((r) => window.setTimeout(r, 1000));
+      }
     }
+  }
+
+  /** "Hey Vico" is heard by the engine; while Vico is away, ask it often whether it was. */
+  private watchForWakePhrase() {
+    if (this.wakePoller !== null) return;
+    this.wakePoller = window.setInterval(async () => {
+      if (this.state.phase !== "hidden" || this.busy) return;
+      try {
+        if ((await api.wake()).woke) void this.summon(true);
+      } catch {
+        /* the engine is restarting; ask again shortly */
+      }
+    }, 250);
   }
 
   dispatch(intent: Intent) {
@@ -195,6 +226,9 @@ export class VicoDriver {
         return void this.decide(true, intent.confirm);
       case "reject":
         return void this.decide(false, false);
+      case "reset":
+        this.clearTimer();
+        return this.set({ ...INITIAL, phase: "setup" });
       case "configured":
         this.set({ phase: "done", narration: "", message: "You're all set. Press Win + Alt + V whenever you need me.", localized: null });
         this.timer = window.setTimeout(() => this.leave(), 3600);
@@ -202,7 +236,8 @@ export class VicoDriver {
     }
   }
 
-  async summon() {
+  /** `woke`: summoned by "Hey Vico", and the engine is already recording what follows. */
+  async summon(woke = false) {
     const active = this.run && !TERMINAL_STATES.includes(this.run.state);
     if (active || ["listening", "typing", "review", "setup", "settings"].includes(this.state.phase)) {
       // Already here: summoning again while listening means "I'm done talking".
@@ -218,6 +253,7 @@ export class VicoDriver {
     try {
       const [settings, health] = await Promise.all([api.settings(), api.health()]);
       if (!settings.onboarding_complete || (!health.cloud_ready && health.online)) {
+        if (woke) void api.cancelRecording().catch(() => undefined);
         this.set({ ...INITIAL, phase: "setup" });
         return;
       }
@@ -225,22 +261,25 @@ export class VicoDriver {
       this.voice = Boolean(health.voice_ready);
       offline = !health.online;
     } catch (err) {
+      if (woke) void api.cancelRecording().catch(() => undefined);
       this.set({ ...INITIAL, phase: "error", message: errorMessage(err) });
       this.timer = window.setTimeout(() => this.leave(), ERROR_MS);
       return;
     }
+    if (woke && !speech) void api.cancelRecording().catch(() => undefined);
     this.set({ ...INITIAL, phase: speech ? "listening" : "typing", speech, offline,
       narration: offline ? "Offline · simple typed commands only" : "" });
-    if (speech) await this.listen();
+    if (speech) await this.listen(woke);
   }
 
-  async listen() {
+  async listen(alreadyRecording = false) {
     this.heard = false;
     this.quietSince = Date.now();
     const started = Date.now();
+    let floor = 0; // the room's background level, learned while the user is quiet
     this.set({ phase: "listening", text: "", level: 0 });
     try {
-      await api.startRecording();
+      if (!alreadyRecording) await api.startRecording();
     } catch (err) {
       this.set({ phase: "typing", narration: errorMessage(err) });
       return;
@@ -250,7 +289,19 @@ export class VicoDriver {
       try {
         const status = await api.recordingStatus();
         const now = Date.now();
-        if (status.level > SPEECH_LEVEL) {
+        if (status.silent) {
+          if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
+          this.levelPoller = null;
+          void api.cancelRecording().catch(() => undefined);
+          this.set({ phase: "typing", level: 0,
+            narration: "Your microphone is muted or turned off. Turn it on in your sound settings, or type instead." });
+          return;
+        }
+        // Only quiet readings teach the room level, so someone who talks straight away is still heard.
+        if (!this.heard && status.level < ROOM_MAX) {
+          floor = floor === 0 ? status.level : Math.min(floor * 1.02 + 0.001, status.level);
+        }
+        if (status.level > Math.max(SPEECH_LEVEL, floor * NOISE_MARGIN)) {
           this.heard = true;
           this.quietSince = now;
         }
@@ -300,6 +351,9 @@ export class VicoDriver {
     this.clearTimer();
     const text = this.state.text.trim();
     if (!text || this.busy) return;
+    if (/^(vico (settings|setup|reset)|change (my )?(key|code)s?)$/i.test(text)) {
+      return this.set({ ...INITIAL, phase: "settings", speech: this.state.speech });
+    }
     this.busy = true;
     try {
       if (this.state.phase === "question" && this.run) {

@@ -20,6 +20,7 @@ const settings: Settings = {
   browser_channel: "auto",
   speech_server_url: null,
   voice_replies: true,
+  wake_word: true,
 };
 
 const provider = { status: "ready" as const, configured: true, requests_today: 0, daily_budget: 500,

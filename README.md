@@ -14,12 +14,12 @@ Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on Google
 
 | | |
 |---|---|
-| Summon | **Win + Alt + V**, or click the tray icon. (If another app owns that shortcut, Vico uses Ctrl + Alt + V.) |
+| Summon | Say **"Hey Vico"**, press **Win + Alt + V**, or click the tray icon. (If another app owns that shortcut, Vico uses Ctrl + Alt + V; the tray menu shows which.) "Hey Vico, open Notepad" works in one breath. |
 | Talk | Just speak. Vico stops listening when you pause, shows what it heard, and goes on its own unless you start editing. |
 | Type instead | Start typing at any moment (noisy room, quiet office). The microphone stops and your typing takes over. |
 | Approve | **Enter** to allow, **Esc** to stop. Risky steps (delete, commands, uploads, sends) need **Enter held down**. |
 | Leave | **Esc** at any time. A running task is cancelled. |
-| Settings | Tray icon → Settings: your Gemini code, an optional Groq backup code, and "ask me before acting". That's all. |
+| Settings | Tray icon → Settings and access codes (or type "vico settings"): your Gemini code, an optional Groq backup code, "ask me before acting", "Hey Vico", and **Remove my codes and start over**. Vico starts when you sign in; untick it in the tray menu. |
 
 ## How it works
 
@@ -152,7 +152,9 @@ Language labels in the app stay "untested" until benchmark results exist.
 
 ## Privacy
 
-- Push-to-talk only. No background listening. Audio never touches disk and is discarded after transcription.
+- "Hey Vico" is recognised **on this computer** (Vosk, offline). While waiting, Vico listens only for that phrase: each slice of sound is checked and dropped, never stored or sent. Windows shows its microphone-in-use icon while this is on; turn it off in Settings. After the phrase, or when you summon Vico, your request is recorded in memory (max 15 s), sent for transcription, and discarded.
+- If your default microphone is muted or delivers pure silence, Vico tries your other microphones by itself.
+- Uninstalling with "Delete the application data" ticked also removes your saved access codes and settings.
 - Nothing goes to a cloud provider until you allow cloud processing. Each provider's terms are linked in Settings. Google's free tier may use data to improve its products.
 - During a task, text from files or web pages that Vico reads is sent to the provider to plan the next step. With approval on, you see each read first.
 - API keys live in Windows Credential Manager or your Linux keyring, never in Vico's files or the UI.

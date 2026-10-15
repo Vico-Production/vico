@@ -91,6 +91,7 @@ export interface Settings {
   browser_channel: "auto" | "msedge" | "chrome" | "chromium";
   speech_server_url: string | null;
   voice_replies: boolean;
+  wake_word: boolean;
 }
 
 export interface ProviderHealth {
@@ -178,6 +179,8 @@ export interface AudioStatus {
   max_s: number;
   level: number;
   full: boolean;
+  silent?: boolean; // every microphone tried gives only digital silence
+  device?: string;
 }
 
 export interface LanguageCapability {

@@ -111,6 +111,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
   const [gemini, setGemini] = useState("");
   const [groq, setGroq] = useState("");
   const [approval, setApproval] = useState(true);
+  const [wake, setWake] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
   const [serverToken, setServerToken] = useState("");
   const [voice, setVoice] = useState(true);
@@ -118,6 +119,17 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const startOver = async () => {
+    if (!confirmReset) return setConfirmReset(true);
+    try {
+      await api.reset();
+      send({ type: "reset" });
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
 
   useEffect(() => {
     api.secrets().then(setConfigured).catch(() => undefined);
@@ -125,6 +137,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       .settings()
       .then((s) => {
         setApproval(s.require_approval);
+        setWake(s.wake_word);
         setServerUrl(s.speech_server_url ?? "");
         setVoice(s.voice_replies);
       })
@@ -156,6 +169,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         cloud_consent: true,
         onboarding_complete: true,
         require_approval: approval,
+        wake_word: wake,
         ...(first ? {} : { speech_server_url: serverUrl.trim() || null, voice_replies: voice }),
       });
       send({ type: "configured" });
@@ -213,6 +227,11 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         <span className="track" aria-hidden="true" />
         <span>Ask me before acting</span>
       </label>
+      <label className="switch">
+        <input type="checkbox" checked={wake} onChange={(e) => setWake(e.target.checked)} data-testid="wake-word" />
+        <span className="track" aria-hidden="true" />
+        <span>Wake me when I say "Hey Vico" · heard only on this computer</span>
+      </label>
       {!first && (
         <details className="server">
           <summary>Your speech server · optional</summary>
@@ -250,6 +269,11 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         never types passwords, and always asks before deleting or sending.
       </p>
       {error && <p className="error-line" role="alert">{error}</p>}
+      {!first && (configured.gemini || configured.groq) && (
+        <button type="button" className="link danger" onClick={() => void startOver()} data-testid="start-over">
+          {confirmReset ? "Click again to remove your codes and settings" : "Remove my codes and start over"}
+        </button>
+      )}
       <div className="choices">
         <button className="drop allow" type="submit" disabled={saving} data-testid="save-setup">
           <span>{first ? "Begin" : "Save"}</span> <Key>⏎</Key>
@@ -290,7 +314,7 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
   if (phase === "setup" || phase === "settings") {
     return (
       <div className="prompt setup-mode" data-testid="prompt">
-        <Setup session={session} send={send} />
+        <Setup key={phase} session={session} send={send} />
       </div>
     );
   }

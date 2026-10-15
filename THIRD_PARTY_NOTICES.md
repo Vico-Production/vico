@@ -27,6 +27,9 @@ cd apps/desktop/src-tauri && cargo install cargo-about && cargo about generate a
 | keyring | OS credential store | MIT |
 | Send2Trash | recoverable deletion | BSD-3-Clause |
 | python-sounddevice (bundles PortAudio) | microphone capture | MIT (PortAudio: MIT-style) |
+| Vosk (vosk-api, bundles libvosk/Kaldi) | on-device "Hey Vico" wake phrase | Apache-2.0 |
+| vosk-model-small-en-us-0.15 (model) | wake phrase recognition; downloaded once from alphacephei.com, SHA-256 checked | Apache-2.0 |
+| tauri-plugin-autostart | start Vico at sign-in | MIT OR Apache-2.0 |
 | Playwright for Python (bundles a Node.js driver) | browser control | Apache-2.0 |
 | pywinauto (+ comtypes, pywin32) | Windows desktop control | BSD-3-Clause / MIT / PSF |
 | pytest, ruff, mypy, PyInstaller | development and packaging | MIT / MIT / MIT / GPL-2.0 with bootloader exception |

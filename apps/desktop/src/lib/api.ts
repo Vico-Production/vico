@@ -92,6 +92,7 @@ export const api = {
   secrets: () => call<Record<string, boolean>>("GET", "/secrets"),
   saveSecret: (provider: string, apiKey: string) =>
     call<{ provider: string; configured: boolean }>("PUT", `/secrets/${provider}`, { api_key: apiKey }),
+  reset: () => call<{ reset: boolean }>("POST", "/reset"),
   deleteSecret: (provider: string) => call<{ provider: string; configured: boolean }>("DELETE", `/secrets/${provider}`),
   models: (provider: string) => call<{ provider: string; models: string[] }>("GET", `/providers/${provider}/models`),
 
@@ -105,6 +106,7 @@ export const api = {
 
   startRecording: (language?: Language) => call<AudioStatus>("POST", "/audio/start", { language: language ?? null }),
   recordingStatus: () => call<AudioStatus>("GET", "/audio/status"),
+  wake: () => call<{ enabled: boolean; state: string; error: string | null; woke: boolean }>("GET", "/audio/wake"),
   stopRecording: (transcribe = true) =>
     call<{ seconds: number; transcript: Transcript | null }>("POST", "/audio/stop", { transcribe }),
   cancelRecording: () => call<{ recording: boolean }>("POST", "/audio/cancel"),

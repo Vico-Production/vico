@@ -21,7 +21,7 @@ export function demoTransport() {
   const settings = { onboarding_complete: true, cloud_consent: true, require_approval: true,
     allow_send_without_approval: false, workspace: "~/Documents/VicoDemo", allowed_roots: ["~"],
     stt_provider: "gemini", llm_provider: "gemini", fallback_consent: true, stt_model: null, llm_model: null,
-    daily_request_budget: 500, max_steps: 12, browser_channel: "auto", speech_server_url: null, voice_replies: true };
+    daily_request_budget: 500, max_steps: 12, browser_channel: "auto", speech_server_url: null, voice_replies: true, wake_word: false };
   const text = "Open BBC News and read me the top headline";
 
   const run = (): Run => {

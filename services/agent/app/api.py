@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.agent.orchestrator import Orchestrator
 from app.audio.recorder import Recorder
+from app.audio.wake import WakeWord
 from app.config import MAX_TEXT_INPUT_CHARS, VERSION, data_dir
 from app.contracts import API_PREFIX, ErrorCode, Language, StrictModel, VicoError, fail, ok
 from app.interpreter.languages import capabilities
@@ -83,6 +84,7 @@ class Services:
     recorder: Recorder
     browser: BrowserController | None
     platform: PlatformAdapter
+    wake: WakeWord | None = None
 
 
 def build_services(*, secrets: SecretStore | None = None, hub_overrides: dict[str, Any] | None = None,
@@ -99,7 +101,23 @@ def build_services(*, secrets: SecretStore | None = None, hub_overrides: dict[st
     kwargs = {"approval_timeout_s": approval_timeout_s} if approval_timeout_s else {}
     orchestrator = Orchestrator(registry=build_registry(), hub=hub, settings=settings, history=history,
                                 platform=platform, browser=browser, **kwargs)
-    return Services(db, settings, history, secrets, hub, orchestrator, recorder or Recorder(), browser, platform)
+    # The wake phrase listener only runs with the real microphone (never in tests or with VICO_WAKE=0).
+    wake = None
+    if recorder is None:
+        recorder = Recorder()
+        if os.environ.get("VICO_WAKE", "1") != "0":
+            wake = WakeWord(recorder)
+    return Services(db, settings, history, secrets, hub, orchestrator, recorder, browser, platform, wake)
+
+
+def sync_wake(s: Services) -> None:
+    if s.wake is None:
+        return
+    current = s.settings.load()
+    if current.wake_word and current.onboarding_complete:
+        s.wake.enable()
+    else:
+        s.wake.disable()
 
 
 class TokenMiddleware(BaseHTTPMiddleware):
@@ -127,9 +145,12 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         app.state.services = services or build_services()
         app.state.background = set()
         warm = asyncio.create_task(app.state.services.hub.warm())
+        sync_wake(app.state.services)
         yield
         warm.cancel()
         s: Services = app.state.services
+        if s.wake is not None:
+            s.wake.close()
         s.recorder.cancel()
         await s.orchestrator.shutdown()
         if s.browser is not None:
@@ -190,6 +211,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         updated = s.settings.update(patch)
         if s.browser is not None:
             s.browser.channel = updated.browser_channel
+        sync_wake(s)
         return ok(updated.model_dump(mode="json"))
 
     @app.get(f"{API_PREFIX}/languages")
@@ -225,6 +247,18 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     async def delete_secret(request: Request, name: str):
         svc(request).secrets.delete(_provider(name))
         return ok({"provider": name, "configured": False})
+
+    @app.post(f"{API_PREFIX}/reset")
+    async def reset(request: Request):
+        """Start over: remove every saved code, setting and history entry."""
+        s = svc(request)
+        s.recorder.cancel()
+        for name in SECRET_NAMES:
+            s.secrets.delete(name)
+        s.settings.reset()
+        s.history.clear()
+        sync_wake(s)
+        return ok({"reset": True})
 
     @app.post(f"{API_PREFIX}/voice/speak")
     async def speak(request: Request, body: SpeakRequest):
@@ -302,6 +336,15 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         return ok({"seconds": round(seconds, 1), "transcript": {
             "text": transcript.text, "language": transcript.language, "provider": transcript.provider,
             "model": transcript.model, "latency_ms": transcript.latency_ms, "confidence": transcript.confidence}})
+
+    @app.get(f"{API_PREFIX}/audio/wake")
+    async def audio_wake(request: Request):
+        """Polled by the desktop app while Vico is hidden. `woke` is true once per "Hey Vico";
+        the recording has already started and is the app's to finish."""
+        s = svc(request)
+        if s.wake is None:
+            return ok({"enabled": False, "state": "off", "error": None, "woke": False})
+        return ok({**s.wake.status(), "woke": s.wake.claim()})
 
     @app.post(f"{API_PREFIX}/audio/cancel")
     async def audio_cancel(request: Request):

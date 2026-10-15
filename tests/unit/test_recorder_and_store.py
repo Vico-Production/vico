@@ -118,3 +118,57 @@ def test_corrupt_database_is_recovered(isolated_data_dir):
     db = Database(path)
     assert SettingsRepository(db).load().require_approval is True
     assert path.with_suffix(".corrupt").exists()
+
+
+def test_dead_microphone_falls_back_to_the_next_device(monkeypatch):
+    import app.audio.recorder as recorder_module
+
+    monkeypatch.setattr(recorder_module, "PROBE_SECONDS", 0.0)
+    opened = []
+
+    def factory(cb, device=None):
+        s = FakeStream(cb)
+        opened.append((device, s))
+        return s
+
+    rec = Recorder(factory, devices=lambda: [None, 3, 7])
+    rec.start(None)
+    opened[0][1].feed(0.5, amplitude=0)  # the default mic delivers exact zeros
+    status = rec.status()
+    assert [d for d, _ in opened] == [None, 3] and not status["silent"]
+    opened[1][1].feed(1.0)  # device 3 hears speech
+    rec.status()
+    wav, _ = rec.stop()
+    assert wav
+    rec.start(None)  # the working mic is tried first next time
+    assert opened[-1][0] == 3
+    rec.cancel()
+
+
+def test_all_microphones_dead_reports_silent(monkeypatch):
+    import app.audio.recorder as recorder_module
+
+    monkeypatch.setattr(recorder_module, "PROBE_SECONDS", 0.0)
+    streams = []
+
+    def factory(cb, device=None):
+        s = FakeStream(cb)
+        streams.append(s)
+        return s
+
+    rec = Recorder(factory, devices=lambda: [None, 1])
+    rec.start(None)
+    streams[0].feed(0.5, amplitude=0)
+    rec.status()
+    streams[1].feed(0.5, amplitude=0)
+    assert rec.status()["silent"] is True
+    with pytest.raises(VicoError) as exc:
+        rec.stop()
+    assert exc.value.code == "mic_unavailable"
+
+
+def test_quiet_speech_is_raised():
+    from app.audio.recorder import normalize, peak
+
+    quiet = array.array("h", (int(900 * math.sin(i / 10)) for i in range(16000))).tobytes()
+    assert peak(normalize(quiet)) > 7000

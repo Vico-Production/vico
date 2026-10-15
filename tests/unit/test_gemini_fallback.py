@@ -150,3 +150,41 @@ def test_local_language_guess(text, expected):
     from app.agent.language import guess_language
 
     assert guess_language(text) == expected
+
+
+async def test_thinking_is_kept_short_and_speech_prefers_flash_lite():
+    bodies: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json=MODELS)
+        model = request.url.path.split("/models/")[1].split(":")[0]
+        bodies.append((model, json.loads(request.content)))
+        text = "{\"language\":\"en\",\"text\":\"open notepad\"}"
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+    p = GeminiProvider("AIzaTest", httpx.AsyncClient(transport=httpx.MockTransport(handler)), QuotaTracker())
+    await p.complete("s", "u", json_mode=True)
+    t = await p.transcribe(b"RIFF" + b"\0" * 40000, "audio/wav", None)
+    assert bodies[0][1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
+    assert bodies[1][0] == "gemini-3.5-flash-lite"
+    assert bodies[1][1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
+    assert t.text == "open notepad"
+
+
+async def test_a_model_that_rejects_the_thinking_setting_is_retried_plainly():
+    seen: list[bool] = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json=MODELS)
+        has = "thinkingConfig" in json.loads(request.content)["generationConfig"]
+        seen.append(has)
+        if has:
+            return httpx.Response(400, json={"error": {"message": "Unknown name \"thinkingConfig\""}})
+        return httpx.Response(200, json=OK)
+
+    p = GeminiProvider("AIzaTest", httpx.AsyncClient(transport=httpx.MockTransport(handler)), QuotaTracker())
+    await p.complete("s", "u", json_mode=True)
+    await p.complete("s", "u", json_mode=True)
+    assert seen == [True, False, False]

@@ -928,3 +928,9 @@ kbd {
     animation: none !important;
   }
 }
+
+.link.danger {
+  align-self: flex-start;
+  margin-top: 8px;
+  color: #ff9a8a;
+}
