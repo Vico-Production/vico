@@ -1,9 +1,16 @@
 name: Release installers
 
+# Builds ready-to-install packages on GitHub's machines, so nobody who installs Vico
+# ever needs compilers, Python, Node.js or Rust. Push a tag like v0.1.0 (or
+# v0.1.0-preview.1 for a test build) and the installers appear on the Releases page.
+
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -19,6 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Windows builds use the MSVC toolchain that GitHub's Windows machines already have.
       - uses: dtolnay/rust-toolchain@stable
       - name: System libraries (Linux)
         if: runner.os == 'Linux'
@@ -43,3 +51,27 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/rpm/*.rpm
             apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
+
+  publish:
+    name: Publish the GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            **Install Vico**
+            - **Windows 10/11:** download the `.exe` (or `.msi`) and run it. Windows may show a SmartScreen warning because the installer is not code-signed yet: choose *More info → Run anyway*.
+            - **Ubuntu / Debian:** download the `.deb` and run `sudo apt install ./Vico_*.deb`.
+            - **Fedora / openSUSE:** download the `.rpm` and run `sudo dnf install ./Vico-*.rpm` (or `zypper install`).
+            - **Any other Linux:** download the `.AppImage`, run `chmod +x Vico_*.AppImage`, then open it.
+
+            Then press **Win + Alt + V** (Ctrl + Alt + V if that shortcut is taken) and paste your free Gemini access code once.

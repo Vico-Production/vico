@@ -73,7 +73,9 @@ Browser control uses Microsoft Edge or Google Chrome if installed. Unsigned inst
 
 ## Develop
 
-Prerequisites: Git, Node.js 20+, Rust (stable, MSVC toolchain on Windows), [uv](https://docs.astral.sh/uv/), and on Windows the Visual Studio C++ Build Tools. Linux also needs the WebKitGTK packages listed in `scripts/bootstrap_linux.sh`.
+People who only use Vico never compile anything: installers are built on GitHub's machines (push a tag like `v0.1.0`, see `.github/workflows/release.yml`) and appear on the Releases page.
+
+To develop Vico, run the setup script for your system. On Windows it installs anything missing (Git, Node.js, uv, Rust, and Microsoft's C++ build tools) and pins Rust's MSVC toolchain for this repository. Tauri cannot be compiled with Rust's GNU toolchain or without the C++ build tools, and the script fixes both. On Linux it installs the WebKitGTK, audio and desktop-control packages.
 
 ```bash
 # Windows
