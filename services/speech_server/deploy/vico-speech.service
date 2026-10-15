@@ -1,0 +1,19 @@
+[Unit]
+Description=Vico Speech Server (Omnilingual ASR, YarnGPT)
+After=network-online.target
+
+[Service]
+User=vico-speech
+EnvironmentFile=/etc/vico-speech.env
+Environment=PYTHONPATH=/opt/vico-speech
+ExecStart=/opt/vico-speech/venv/bin/python -m vico_speech.server
+Restart=on-failure
+# Audio is never written to disk; keep the service from writing anywhere but its models.
+ProtectSystem=strict
+ReadWritePaths=/opt/vico-speech
+ProtectHome=false
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

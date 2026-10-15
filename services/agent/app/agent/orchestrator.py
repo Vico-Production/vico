@@ -315,6 +315,7 @@ class Orchestrator:
             else:
                 understood = await self._cloud_call(run, lambda: self.hub.understand(run.text))
                 run.language, run.canonical = understood["language"], understood["english"]
+                run.original = understood.get("restored") or run.original
         elif run.language != Language.EN:
             translated = await self._cloud_call(run, lambda: self.hub.translate(run.text, run.language, "en"))
             run.canonical = translated["text"]

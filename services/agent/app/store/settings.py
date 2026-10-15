@@ -34,6 +34,10 @@ class Settings(StrictModel):
     daily_request_budget: int = Field(default=500, ge=1, le=100_000)
     max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=40)
     browser_channel: Literal["auto", "msedge", "chrome", "chromium"] = "auto"
+    # The user's own Vico Speech Server (Omnilingual ASR + YarnGPT voices); token in the keyring.
+    speech_server_url: str | None = None
+    # Speak answers aloud when a speech server with voices is set up.
+    voice_replies: bool = True
 
 
 class SettingsPatch(StrictModel):
@@ -51,6 +55,8 @@ class SettingsPatch(StrictModel):
     daily_request_budget: int | None = Field(default=None, ge=1, le=100_000)
     max_steps: int | None = Field(default=None, ge=1, le=40)
     browser_channel: Literal["auto", "msedge", "chrome", "chromium"] | None = None
+    speech_server_url: str | None = Field(default=None, max_length=300)
+    voice_replies: bool | None = None
 
 
 class SettingsRepository:
@@ -73,7 +79,8 @@ class SettingsRepository:
         current = self.load()
         changes = patch.model_dump(exclude_unset=True)
         # Explicit nulls only clear the optional model overrides.
-        changes = {k: v for k, v in changes.items() if v is not None or k in ("stt_model", "llm_model")}
+        changes = {k: v for k, v in changes.items()
+                   if v is not None or k in ("stt_model", "llm_model", "speech_server_url")}
         merged = Settings(**{**current.model_dump(), **changes})
         for key, value in merged.model_dump(mode="json").items():
             self.db.execute(

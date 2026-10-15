@@ -28,7 +28,7 @@ Language tags: `en`, `yo`, `ha`, `ig`, `pcm` (experimental).
 | GET / PUT | `/settings` | partial `Settings` | full `Settings` |
 | GET | `/languages` | | per-language capability labels (`untested` until measured) |
 | GET | `/secrets` | | `{groq: bool, gemini: bool}` (never the key) |
-| PUT / DELETE | `/secrets/{groq\|gemini}` | `{api_key}` | `{provider, configured}` |
+| PUT / DELETE | `/secrets/{groq\|gemini\|speech_server}` | `{api_key}` | `{provider, configured}` |
 | GET | `/providers/{name}/models` | | models the account can use (requires cloud consent) |
 | POST | `/agent/runs` | `{text, language?}` | `Run` (409 if another task is active). Omit `language` to detect it |
 | GET | `/agent/runs/current` | | the most recent `Run`, or null |
@@ -41,6 +41,8 @@ Language tags: `en`, `yo`, `ha`, `ig`, `pcm` (experimental).
 | GET | `/audio/status` | | `{recording, elapsed_s, max_s, level, full}` |
 | POST | `/audio/stop` | `{transcribe}` | `{seconds, transcript}`; audio is discarded afterwards |
 | POST | `/audio/cancel` | | stops and discards |
+| POST | `/voice/speak` | `{text, language}` | `{audio_b64, mime, model, latency_ms}` from the user's speech server (YarnGPT); played from memory |
+| GET | `/speech-server/health` | | which engines the user's speech server has ready |
 | GET / DELETE | `/history` | | entries / `{deleted}` |
 | POST | `/browser/close` | | closes Vico's browser window |
 

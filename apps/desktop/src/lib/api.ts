@@ -109,6 +109,13 @@ export const api = {
     call<{ seconds: number; transcript: Transcript | null }>("POST", "/audio/stop", { transcribe }),
   cancelRecording: () => call<{ recording: boolean }>("POST", "/audio/cancel"),
 
+  speak: (text: string, language: Language) =>
+    call<{ audio_b64: string; mime: string; model: string; latency_ms: number }>("POST", "/voice/speak", { text, language }),
+  speechServerHealth: () =>
+    call<{ asr: { ready: boolean; model: string | null }; voice: { ready: boolean; model: string | null } }>(
+      "GET",
+      "/speech-server/health",
+    ),
   history: () => call<HistoryEntry[]>("GET", "/history"),
   clearHistory: () => call<{ deleted: number }>("DELETE", "/history"),
   closeBrowser: () => call<{ browser_open: boolean }>("POST", "/browser/close"),

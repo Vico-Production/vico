@@ -1,0 +1,9 @@
+# Free automatic HTTPS for the speech server (Caddy, Apache-2.0). Replace the hostname
+# with one that points at your server (a free DuckDNS name works), then:
+#   sudo apt install caddy && sudo cp Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+speech.example.duckdns.org {
+	request_body {
+		max_size 3MB
+	}
+	reverse_proxy 127.0.0.1:8088
+}

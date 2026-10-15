@@ -8,6 +8,7 @@
     "online": true,
     "cloud_ready": true,
     "speech_ready": true,
+    "voice_ready": false,
     "cloud_consent": true,
     "providers": {
       "groq": {
@@ -25,6 +26,15 @@
         "requests_today": 3,
         "daily_budget": 500,
         "audio_seconds_today": 12.5,
+        "rate_limited": false,
+        "cooldown_s": 0.0
+      },
+      "speech_server": {
+        "status": "not_configured",
+        "configured": false,
+        "requests_today": 0,
+        "daily_budget": 500,
+        "audio_seconds_today": 0.0,
         "rate_limited": false,
         "cooldown_s": 0.0
       }

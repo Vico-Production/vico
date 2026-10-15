@@ -24,6 +24,7 @@ dev = [
     "ruff>=0.7",
     "mypy>=1.13",
     "pyinstaller>=6.11",
+    "numpy>=1.26",
 ]
 
 [tool.uv]

@@ -40,7 +40,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost"
     },
     "macOSPrivateApi": true
   },
@@ -67,7 +67,16 @@
         "depends": [
           "libportaudio2",
           "xdotool",
-          "wmctrl"
+          "wmctrl",
+          "gstreamer1.0-plugins-good"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "portaudio",
+          "xdotool",
+          "wmctrl",
+          "gstreamer1-plugins-good"
         ]
       }
     }

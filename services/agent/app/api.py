@@ -24,7 +24,8 @@ from app.contracts import API_PREFIX, ErrorCode, Language, StrictModel, VicoErro
 from app.interpreter.languages import capabilities
 from app.platform import get_platform
 from app.platform.base import PlatformAdapter
-from app.providers.registry import PROVIDERS, ProviderHub
+from app.providers.registry import SECRET_NAMES, ProviderHub
+from app.providers.speech_server import _clean_url
 from app.security.secret_store import SecretStore
 from app.store.db import Database
 from app.store.history import HistoryRepository
@@ -56,6 +57,11 @@ class ReplyRequest(StrictModel):
 
 class SecretRequest(StrictModel):
     api_key: str = Field(min_length=8, max_length=400)
+
+
+class SpeakRequest(StrictModel):
+    text: str = Field(min_length=1, max_length=600)
+    language: Language
 
 
 class AudioStartRequest(StrictModel):
@@ -167,6 +173,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         return ok({
             "version": VERSION, "platform": sys.platform, "adapter": s.platform.name, "online": online,
             "cloud_ready": online and s.hub.has_role("llm"), "speech_ready": online and s.hub.has_role("stt"),
+            "voice_ready": online and s.hub.voice_ready(),
             "cloud_consent": settings.cloud_consent, "providers": s.hub.status(),
             "recording": s.recorder.active, "browser_open": bool(s.browser and s.browser.is_open),
         })
@@ -178,6 +185,8 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     @app.put(f"{API_PREFIX}/settings")
     async def put_settings(request: Request, patch: SettingsPatch):
         s = svc(request)
+        if patch.speech_server_url:
+            patch.speech_server_url = _clean_url(patch.speech_server_url)
         updated = s.settings.update(patch)
         if s.browser is not None:
             s.browser.channel = updated.browser_channel
@@ -189,14 +198,14 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
 
     # --- secrets -------------------------------------------------------------------------
     def _provider(name: str) -> str:
-        if name not in PROVIDERS:
+        if name not in SECRET_NAMES:
             raise VicoError(ErrorCode.NOT_FOUND, f"Unknown provider {name}.", status=404)
         return name
 
     @app.get(f"{API_PREFIX}/secrets")
     async def list_secrets(request: Request):
         s = svc(request)
-        return ok({name: s.secrets.has(name) for name in PROVIDERS})
+        return ok({name: s.secrets.has(name) for name in SECRET_NAMES})
 
     @app.put(f"{API_PREFIX}/secrets/{{name}}")
     async def put_secret(request: Request, name: str, body: SecretRequest):
@@ -216,6 +225,14 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     async def delete_secret(request: Request, name: str):
         svc(request).secrets.delete(_provider(name))
         return ok({"provider": name, "configured": False})
+
+    @app.post(f"{API_PREFIX}/voice/speak")
+    async def speak(request: Request, body: SpeakRequest):
+        return ok(await svc(request).hub.speak(body.text, body.language.value))
+
+    @app.get(f"{API_PREFIX}/speech-server/health")
+    async def speech_server_health(request: Request):
+        return ok(await svc(request).hub.speech_server_health())
 
     @app.get(f"{API_PREFIX}/providers/{{name}}/models")
     async def provider_models(request: Request, name: str):

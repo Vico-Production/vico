@@ -60,6 +60,15 @@ Other protections: paths are resolved and checked against the folders you allow 
 
 Gemini's free tier limits requests per minute and per day (the daily limit resets at midnight Pacific time, about 8–9 am in Nigeria). Vico sends requests to Gemini 3.6 Flash first and, the moment it is rate-limited, moves the same request to Gemini 3.5 Flash-Lite, so a long task keeps going without the user noticing. If both are briefly limited, Vico shows a "key cooling" countdown and resumes the task by itself. If the daily limit is used up, it stops and says when it resets. Each user's key has its own limits.
 
+## Better Nigerian-language speech (optional, free)
+
+Run the free, self-hosted **Vico Speech Server** (`services/speech_server`, Linux) to add:
+
+- **Meta Omnilingual ASR** (Apache-2.0) as the speech fallback for Yorùbá, Hausa and Igbo. Speech order: Gemini → Omnilingual → Groq Whisper, which Vico now uses for **English only**: it is weak on Yoruba and Hausa and does not support Igbo.
+- **YarnGPT** Nigerian voices (Apache-2.0) so Vico answers aloud in your language.
+
+Models download only from the publishers' official repositories at pinned commits, with checksums verified. Typed Yorùbá and Igbo without tone marks are restored automatically ("Se folda tuntun" → "Ṣe fóldà tuntun") in the same AI call that detects the language; Vico accepts the result only if nothing but the accents changed. Accuracy and speed on the free Oracle server are **not measured yet**; see the server's README for how to measure them.
+
 ## Install (users)
 
 Download the installer for your system from the project's Releases page:

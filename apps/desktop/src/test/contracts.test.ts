@@ -19,10 +19,10 @@ const SETTINGS_KEYS: Record<keyof Settings, true> = {
   onboarding_complete: true, cloud_consent: true,
   require_approval: true, allow_send_without_approval: true, workspace: true, allowed_roots: true, stt_provider: true,
   llm_provider: true, fallback_consent: true, stt_model: true, llm_model: true, daily_request_budget: true,
-  max_steps: true, browser_channel: true,
+  max_steps: true, browser_channel: true, speech_server_url: true, voice_replies: true,
 };
 const HEALTH_KEYS: Record<keyof Health, true> = {
-  version: true, platform: true, adapter: true, online: true, cloud_ready: true, speech_ready: true,
+  version: true, platform: true, adapter: true, online: true, cloud_ready: true, speech_ready: true, voice_ready: true,
   cloud_consent: true, providers: true, recording: true, browser_open: true,
 };
 

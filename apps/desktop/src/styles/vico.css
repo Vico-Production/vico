@@ -791,6 +791,25 @@ kbd {
   outline-offset: 3px;
 }
 
+.setup {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.server summary {
+  cursor: pointer;
+  font: 600 10.5px var(--text);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(225, 215, 255, 0.75);
+}
+
+.server[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .fine {
   margin: 0;
   font: 400 12px / 1.5 var(--text);

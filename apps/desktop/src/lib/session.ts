@@ -3,7 +3,7 @@
 // prompt window what to show. The prompt sends back what the user did as intents.
 import { api, errorMessage } from "./api";
 import { emit } from "./bus";
-import { TERMINAL_STATES, type Run, type Step } from "./contracts";
+import { TERMINAL_STATES, type Language, type Run, type Step } from "./contracts";
 import { native, type Native } from "./native";
 
 export type Phase =
@@ -117,6 +117,8 @@ export class VicoDriver {
   private quietSince = 0;
   private lastPhase: Phase = "hidden";
   private busy = false;
+  private voice = false;
+  private audio: HTMLAudioElement | null = null;
 
   constructor(private readonly windows: Native = native) {}
 
@@ -220,6 +222,7 @@ export class VicoDriver {
         return;
       }
       speech = health.speech_ready;
+      this.voice = Boolean(health.voice_ready);
       offline = !health.online;
     } catch (err) {
       this.set({ ...INITIAL, phase: "error", message: errorMessage(err) });
@@ -346,6 +349,7 @@ export class VicoDriver {
         this.stopPolling();
         this.set({ phase: "done", message: run.message, localized: run.message_localized, narration: "", step: null });
         this.timer = window.setTimeout(() => this.leave(), DONE_MS);
+        void this.speakResult(run.message_localized || run.message, run.language);
         return;
       case "failed":
         return this.fail(run.message || run.error?.message || "Something went wrong.");
@@ -361,6 +365,28 @@ export class VicoDriver {
           this.set({ phase, narration, step: null, cooldownUntil: null });
         }
       }
+    }
+  }
+
+  /** Speak the answer in the user's language (YarnGPT on their speech server), from memory. */
+  private async speakResult(text: string | null, language: string) {
+    if (!this.voice || !text || !["en", "yo", "ha", "ig"].includes(language)) return;
+    try {
+      const out = await api.speak(text, language as Language);
+      if (this.state.phase !== "done") return;
+      const bytes = Uint8Array.from(atob(out.audio_b64), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: out.mime }));
+      const audio = new Audio(url);
+      this.audio = audio;
+      this.clearTimer(); // stay until the voice has finished
+      audio.onended = audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        this.audio = null;
+        this.timer = window.setTimeout(() => this.leave(), 1600);
+      };
+      await audio.play();
+    } catch {
+      /* the answer stays on screen as text */
     }
   }
 
@@ -393,6 +419,8 @@ export class VicoDriver {
 
   leave() {
     this.clearTimer();
+    this.audio?.pause();
+    this.audio = null;
     this.stopPolling();
     if (this.state.phase === "hidden" || this.state.phase === "leaving") return;
     this.set({ phase: "leaving", level: 0 });

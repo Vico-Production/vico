@@ -21,7 +21,7 @@ export function demoTransport() {
   const settings = { onboarding_complete: true, cloud_consent: true, require_approval: true,
     allow_send_without_approval: false, workspace: "~/Documents/VicoDemo", allowed_roots: ["~"],
     stt_provider: "gemini", llm_provider: "gemini", fallback_consent: true, stt_model: null, llm_model: null,
-    daily_request_budget: 500, max_steps: 12, browser_channel: "auto" };
+    daily_request_budget: 500, max_steps: 12, browser_channel: "auto", speech_server_url: null, voice_replies: true };
   const text = "Open BBC News and read me the top headline";
 
   const run = (): Run => {
@@ -54,7 +54,7 @@ export function demoTransport() {
       const provider = { status: "ready", configured: true, requests_today: 3, daily_budget: 500,
         audio_seconds_today: 0, rate_limited: false, cooldown_s: 0 };
       return ok({ version: "demo", platform: "browser", adapter: "demo", online: true, cloud_ready: true,
-        speech_ready: true, cloud_consent: true, providers: { gemini: provider, groq: provider },
+        speech_ready: true, voice_ready: false, cloud_consent: true, providers: { gemini: provider, groq: provider, speech_server: provider },
         recording: false, browser_open: false });
     }
     if (path === "/secrets") return ok({ gemini: true, groq: false });

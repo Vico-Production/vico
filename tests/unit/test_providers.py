@@ -34,15 +34,16 @@ async def test_groq_picks_models_from_live_list_and_transcribes():
             return httpx.Response(200, json=GROQ_MODELS)
         seen["auth"] = request.headers["authorization"]
         seen["body"] = request.content
-        return httpx.Response(200, json={"text": " Ṣí fóldà "})
+        return httpx.Response(200, json={"text": " Open my folder ", "language": "english"})
 
-    t = await groq(handler).transcribe(b"RIFF" + b"\0" * 1000, "audio/wav", "yo")
-    assert t.text == "Ṣí fóldà" and t.model == "whisper-large-v3" and t.confidence is None
+    t = await groq(handler).transcribe(b"RIFF" + b"\0" * 1000, "audio/wav", "en")
+    assert t.text == "Open my folder" and t.model == "whisper-large-v3" and t.confidence is None
     assert seen["auth"] == "Bearer gsk_test"
-    assert b'name="language"\r\n\r\nyo' in seen["body"]
+    assert b'name="language"\r\n\r\nen' in seen["body"]
 
 
-async def test_groq_omits_unsupported_whisper_language():
+@pytest.mark.parametrize("language", ["yo", "ha", "ig", "pcm"])
+async def test_groq_whisper_is_not_used_for_nigerian_languages(language):
     bodies = []
 
     def handler(request):
@@ -51,8 +52,9 @@ async def test_groq_omits_unsupported_whisper_language():
         bodies.append(request.content)
         return httpx.Response(200, json={"text": "ok"})
 
-    await groq(handler).transcribe(b"x" * 100, "audio/wav", "ig")
-    assert b'name="language"' not in bodies[0]
+    with pytest.raises(VicoError) as exc:
+        await groq(handler).transcribe(b"x" * 100, "audio/wav", language)
+    assert exc.value.code == "provider_unavailable" and bodies == []  # no audio was sent
 
 
 async def test_groq_chat_json_mode():

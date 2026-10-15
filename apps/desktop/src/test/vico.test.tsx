@@ -18,6 +18,8 @@ const settings: Settings = {
   daily_request_budget: 500,
   max_steps: 12,
   browser_channel: "auto",
+  speech_server_url: null,
+  voice_replies: true,
 };
 
 const provider = { status: "ready" as const, configured: true, requests_today: 0, daily_budget: 500,
@@ -25,7 +27,7 @@ const provider = { status: "ready" as const, configured: true, requests_today: 0
 
 function health(over: Partial<Health> = {}): Health {
   return { version: "0.1.0", platform: "win32", adapter: "windows", online: true, cloud_ready: true,
-    speech_ready: false, cloud_consent: true, providers: { gemini: provider, groq: provider }, recording: false,
+    speech_ready: false, voice_ready: false, cloud_consent: true, providers: { gemini: provider, groq: provider, speech_server: provider }, recording: false,
     browser_open: false, ...over };
 }
 

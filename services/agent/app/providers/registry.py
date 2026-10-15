@@ -15,15 +15,22 @@ from typing import Any, TypeVar
 
 import httpx
 
+from app.agent.language import safe_restoration
 from app.agent.prompts import SUMMARY_SYSTEM, UNDERSTAND_SYSTEM, translate_system
 from app.contracts import LANGUAGE_NAMES, ErrorCode, ProviderStatus, VicoError
 from app.providers.base import QuotaTracker, normalize_language, parse_json_text, provider_status
 from app.providers.gemini import GeminiProvider
 from app.providers.groq import GroqProvider
+from app.providers.speech_server import OmnilingualProvider, SpeechServer, VoiceProvider
 from app.security.secret_store import SecretStore
 from app.store.settings import Settings
 
 PROVIDERS = ("groq", "gemini")
+# Keys the user can store: the two cloud providers and the token of their own speech server.
+SECRET_NAMES = ("groq", "gemini", "speech_server")
+# Speech-to-text order: Gemini, then Meta Omnilingual ASR on the user's speech server,
+# then Groq Whisper (English only). A setting can move one of them to the front.
+STT_ORDER = ("gemini", "omnilingual", "groq")
 HOSTS = {"groq": "api.groq.com", "gemini": "generativelanguage.googleapis.com"}
 FALLBACK_CODES = {ErrorCode.OFFLINE, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED, ErrorCode.PROVIDER_UNAVAILABLE}
 T = TypeVar("T")
@@ -36,14 +43,33 @@ class ProviderHub:
         self.settings = settings
         self.client = client or httpx.AsyncClient(follow_redirects=False)
         self.overrides = overrides or {}
-        self.quotas = {name: QuotaTracker() for name in PROVIDERS}
+        self.quotas = {name: QuotaTracker() for name in (*PROVIDERS, "speech_server")}
         self._cache: dict[str, tuple[str, Any]] = {}
         self._online: tuple[float, bool] = (0.0, False)
 
     # --- construction ------------------------------------------------------------------
+    def speech_server(self) -> SpeechServer | None:
+        s = self.settings()
+        token = self.secrets.get("speech_server")
+        if not s.speech_server_url or not token:
+            return None
+        fingerprint = hashlib.sha256(f"{s.speech_server_url}|{token}".encode()).hexdigest()
+        cached = self._cache.get("speech_server")
+        if cached and cached[0] == fingerprint:
+            return cached[1]
+        try:
+            server = SpeechServer(s.speech_server_url, token, self.client, self.quotas["speech_server"])
+        except VicoError:
+            return None  # an unusable address is reported when it is saved
+        self._cache["speech_server"] = (fingerprint, server)
+        return server
+
     def provider(self, name: str) -> Any | None:
         if name in self.overrides:
             return self.overrides[name]
+        if name == "omnilingual":
+            server = self.speech_server()
+            return OmnilingualProvider(server) if server else None
         key = self.secrets.get(name)
         if not key:
             return None
@@ -61,14 +87,19 @@ class ProviderHub:
         return instance
 
     def configured(self, name: str) -> bool:
-        return name in self.overrides or self.secrets.has(name)
+        if name in self.overrides:
+            return True
+        if name == "omnilingual":
+            return self.speech_server() is not None
+        return self.secrets.has(name)
 
     def _chain(self, role: str) -> list[Any]:
         s = self.settings()
         primary = s.stt_provider if role == "stt" else s.llm_provider
         names: list[str] = [] if primary == "none" else [primary]
         if s.fallback_consent:
-            names += [n for n in PROVIDERS if n not in names]
+            order = STT_ORDER if role == "stt" else PROVIDERS
+            names += [n for n in order if n not in names]
         chain = [p for p in (self.provider(n) for n in names) if p is not None]
         return chain
 
@@ -119,7 +150,33 @@ class ProviderHub:
             raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "Could not understand the request.", retryable=True)
         english = data.get("english")
         return {"language": normalize_language(data.get("language")) or "en",
-                "english": english.strip() if isinstance(english, str) and english.strip() else text}
+                "english": english.strip() if isinstance(english, str) and english.strip() else text,
+                # Tone marks restored for display and planning, only if nothing but diacritics changed.
+                "restored": safe_restoration(text, data.get("restored")) or text}
+
+    def voice_ready(self) -> bool:
+        s = self.settings()
+        return bool(s.cloud_consent and s.voice_replies and ("yarngpt" in self.overrides or self.speech_server()))
+
+    async def speak(self, text: str, language: str) -> dict[str, Any]:
+        """Speak `text` in a Nigerian voice from the user's speech server (YarnGPT)."""
+        self.require_consent()
+        if not self.settings().voice_replies:
+            raise VicoError(ErrorCode.UNSUPPORTED, "Voice replies are switched off.")
+        voice = self.overrides.get("yarngpt")
+        if voice is None:
+            server = self.speech_server()
+            if server is None:
+                raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "No speech server is set up for voice replies.")
+            voice = VoiceProvider(server)
+        return await voice.speak(text, language)
+
+    async def speech_server_health(self) -> dict[str, Any]:
+        self.require_consent()
+        server = self.speech_server()
+        if server is None:
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "Add the speech server address and token first.")
+        return await server.health()
 
     async def warm(self) -> None:
         """Fetch each configured provider's model list ahead of time so the first request is fast."""
@@ -176,6 +233,11 @@ class ProviderHub:
     def status(self) -> dict[str, Any]:
         s = self.settings()
         out: dict[str, Any] = {}
+        server = self.speech_server()
+        out["speech_server"] = {"status": (ProviderStatus.READY if server and s.cloud_consent else
+                                           ProviderStatus.DISABLED if server else ProviderStatus.NOT_CONFIGURED).value,
+                                "configured": server is not None, **self.quotas["speech_server"].status(),
+                                "cooldown_s": self.quotas["speech_server"].cooldown_s()}
         for name in PROVIDERS:
             configured = self.configured(name)
             state = provider_status(configured, self.quotas[name])

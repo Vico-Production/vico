@@ -39,3 +39,21 @@ def guess_language(text: str) -> str | None:
         return None  # tone marks or other non-English letters: let the cloud decide
     known = sum(w in _ENGLISH for w in words)
     return "en" if known / len(words) >= 0.6 else None
+
+
+def strip_diacritics(text: str) -> str:
+    """Base letters only, so 'Ṣẹ̀dá' and 'Seda' compare equal. Hooked Hausa letters map to plain ones."""
+    hooked = str.maketrans("ɓɗƙƴƁƊƘƳ", "bdkyBDKY")
+    decomposed = unicodedata.normalize("NFD", text.translate(hooked))
+    base = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return " ".join(base.casefold().split())
+
+
+def safe_restoration(original: str, restored: object) -> str | None:
+    """Accept a tone-mark restoration only if it changes nothing but diacritics."""
+    if not isinstance(restored, str) or not restored.strip():
+        return None
+    candidate = unicodedata.normalize("NFC", restored.strip())
+    if candidate == unicodedata.normalize("NFC", original.strip()):
+        return None
+    return candidate if strip_diacritics(candidate) == strip_diacritics(original) else None

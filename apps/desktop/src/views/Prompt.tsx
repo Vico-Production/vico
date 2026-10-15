@@ -111,14 +111,37 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
   const [gemini, setGemini] = useState("");
   const [groq, setGroq] = useState("");
   const [approval, setApproval] = useState(true);
+  const [serverUrl, setServerUrl] = useState("");
+  const [serverToken, setServerToken] = useState("");
+  const [voice, setVoice] = useState(true);
+  const [serverCheck, setServerCheck] = useState<string | null>(null);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.secrets().then(setConfigured).catch(() => undefined);
-    api.settings().then((s) => setApproval(s.require_approval)).catch(() => undefined);
+    api
+      .settings()
+      .then((s) => {
+        setApproval(s.require_approval);
+        setServerUrl(s.speech_server_url ?? "");
+        setVoice(s.voice_replies);
+      })
+      .catch(() => undefined);
   }, []);
+
+  const checkServer = async () => {
+    setServerCheck("Checking…");
+    try {
+      if (serverToken.trim()) await api.saveSecret("speech_server", serverToken.trim());
+      await api.updateSettings({ speech_server_url: serverUrl.trim() || null });
+      const h = await api.speechServerHealth();
+      setServerCheck(`Connected · listening ${h.asr.ready ? "ready" : "off"} · voice ${h.voice.ready ? "ready" : "off"}`);
+    } catch (err) {
+      setServerCheck(errorMessage(err));
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -128,7 +151,13 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       if (groq.trim()) await api.saveSecret("groq", groq.trim());
       const keys = await api.secrets();
       if (!keys.gemini && !keys.groq) throw new Error("Paste your Gemini access code to continue.");
-      await api.updateSettings({ cloud_consent: true, onboarding_complete: true, require_approval: approval });
+      if (serverToken.trim()) await api.saveSecret("speech_server", serverToken.trim());
+      await api.updateSettings({
+        cloud_consent: true,
+        onboarding_complete: true,
+        require_approval: approval,
+        ...(first ? {} : { speech_server_url: serverUrl.trim() || null, voice_replies: voice }),
+      });
       send({ type: "configured" });
     } catch (err) {
       setError(errorMessage(err));
@@ -184,6 +213,38 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         <span className="track" aria-hidden="true" />
         <span>Ask me before acting</span>
       </label>
+      {!first && (
+        <details className="server">
+          <summary>Your speech server · optional</summary>
+          <p className="fine">
+            A free server you run yourself, with Meta Omnilingual ASR for Yorùbá, Hausa and Igbo speech and Nigerian
+            voices for spoken answers. Setup guide: services/speech_server/README.md.
+          </p>
+          <label className="line-field quiet">
+            <span>Address {configured.speech_server && <em>· token saved</em>}</span>
+            <input value={serverUrl} placeholder="https://your-server" onChange={(e) => setServerUrl(e.target.value)} />
+          </label>
+          <label className="line-field quiet">
+            <span>Token</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={serverToken}
+              placeholder="Printed by the setup script"
+              onChange={(e) => setServerToken(e.target.value)}
+            />
+          </label>
+          <label className="switch">
+            <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
+            <span className="track" aria-hidden="true" />
+            <span>Answer me aloud</span>
+          </label>
+          <button type="button" className="link" onClick={() => void checkServer()} data-testid="test-server">
+            test connection
+          </button>
+          {serverCheck && <p className="fine">{serverCheck}</p>}
+        </details>
+      )}
       <p className="fine">
         To understand you, your voice and requests go to Google Gemini (and Groq if you add it). Vico never pays,
         never types passwords, and always asks before deleting or sending.

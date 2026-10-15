@@ -33,6 +33,25 @@ cd apps/desktop/src-tauri && cargo install cargo-about && cargo about generate a
 
 PyInstaller's bootloader exception allows distributing the packaged engine under any license.
 
+## Optional Vico Speech Server (self-hosted, not bundled with the app)
+
+Installed only on a server the user runs (`services/speech_server`). All free; nothing is paid.
+
+| Component | Use | License | Where it runs |
+|---|---|---|---|
+| Meta Omnilingual ASR, `omniASR_CTC_300M` model and `omnilingual-asr` code | speech recognition for Yoruba, Hausa, Igbo, English | Apache-2.0 | user's Linux server |
+| fairseq2 | runtime for Omnilingual ASR | MIT | user's Linux server |
+| YarnGPT2b (model) / yarngpt (code) | Nigerian voices for spoken answers | Apache-2.0 / MIT | user's Linux server |
+| WavTokenizer (large, speech 75 token) | audio decoder for YarnGPT | MIT | user's Linux server |
+| OuteTTS 0.2.3 (code) | WavTokenizer decoder code used by YarnGPT | Apache-2.0 | user's Linux server |
+| uroman | romanisation used by YarnGPT | MIT-style | user's Linux server |
+| PyTorch, Transformers, Hugging Face Hub | model runtime and downloads | BSD-3-Clause / Apache-2.0 / Apache-2.0 | user's Linux server |
+| Caddy (recommended) | HTTPS in front of the server | Apache-2.0 | user's Linux server |
+
+Required acknowledgement: "This project uses the universal romanizer software 'uroman' written by Ulf Hermjakob, USC Information Sciences Institute (2015-2020)".
+
+Not used: **N-ATLaS** (custom license, free only up to 1,000 active users a month, commercial license above that).
+
 ## Cloud services (optional, not bundled)
 
 - **GroqCloud API** — used under the user's own free account and Groq's terms.

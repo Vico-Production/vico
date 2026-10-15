@@ -89,6 +89,8 @@ export interface Settings {
   daily_request_budget: number;
   max_steps: number;
   browser_channel: "auto" | "msedge" | "chrome" | "chromium";
+  speech_server_url: string | null;
+  voice_replies: boolean;
 }
 
 export interface ProviderHealth {
@@ -108,8 +110,9 @@ export interface Health {
   online: boolean;
   cloud_ready: boolean;
   speech_ready: boolean;
+  voice_ready: boolean;
   cloud_consent: boolean;
-  providers: Record<"groq" | "gemini", ProviderHealth>;
+  providers: Record<"groq" | "gemini" | "speech_server", ProviderHealth>;
   recording: boolean;
   browser_open: boolean;
 }

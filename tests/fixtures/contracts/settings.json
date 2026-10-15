@@ -17,7 +17,9 @@
     "llm_model": null,
     "daily_request_budget": 500,
     "max_steps": 12,
-    "browser_channel": "auto"
+    "browser_channel": "auto",
+    "speech_server_url": null,
+    "voice_replies": true
   },
   "error": null
 }

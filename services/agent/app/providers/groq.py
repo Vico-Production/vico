@@ -22,8 +22,9 @@ from app.providers.base import (
 )
 
 BASE_URL = "https://api.groq.com/openai/v1"
-# Whisper's published language list includes Yoruba and Hausa but not Igbo or Pidgin.
-WHISPER_LANGUAGES = {"en", "yo", "ha"}
+# Groq Whisper is used for English speech only: it is weak on Yoruba and Hausa and does not
+# support Igbo. Other languages go to Gemini or the Omnilingual speech server first.
+WHISPER_LANGUAGES = {"en"}
 STT_PREFERENCES = ["whisper-large-v3", "whisper-large-v3-turbo", "whisper"]
 LLM_PREFERENCES = ["llama-3.3-70b", "gpt-oss-120b", "llama-4", "qwen", "gpt-oss", "llama", "mixtral", "gemma"]
 LLM_EXCLUDE = ("whisper", "guard", "tts", "playai", "distil", "orpheus")
@@ -96,6 +97,9 @@ class GroqProvider:
         return self.models.cooldown_s()
 
     async def transcribe(self, audio: bytes, mime: str, language: str | None) -> Transcript:
+        if language is not None and language not in WHISPER_LANGUAGES:
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE,
+                            "Groq Whisper is only used for English; set up Gemini or a speech server for this language.")
         form = {"temperature": "0", "response_format": "verbose_json"}
         if language in WHISPER_LANGUAGES:
             form["language"] = str(language)
@@ -115,6 +119,9 @@ class GroqProvider:
         if not isinstance(text, str):
             raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "Groq returned no transcript.", status=502)
         detected = normalize_language(data.get("language"))
+        if language is None and detected not in (None, "en"):
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE,
+                            "Groq Whisper heard a language other than English, which it is not used for.")
         return Transcript(text=text.strip(), language=language or detected or "en", provider=self.name,
                           model=model, latency_ms=int((time.monotonic() - started) * 1000))
 
