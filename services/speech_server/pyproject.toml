@@ -3,7 +3,7 @@ name = "vico-speech-server"
 version = "0.1.0"
 description = "Self-hosted speech recognition (Meta Omnilingual ASR) and Nigerian voices (YarnGPT) for Vico"
 requires-python = ">=3.10,<3.13"
-license = { text = "Not yet chosen; see ../../LICENSE" }
+license = "Apache-2.0"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.32",

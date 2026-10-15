@@ -158,6 +158,6 @@ Language labels in the app stay "untested" until benchmark results exist.
 - API keys live in Windows Credential Manager or your Linux keyring, never in Vico's files or the UI.
 - History stores a short description, tool, approval and result — not audio, file contents or full transcripts — and can be cleared.
 
-## Licenses
+## License
 
-Vico's own license is not chosen yet (see `LICENSE`). Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Vico is licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). Third-party components keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

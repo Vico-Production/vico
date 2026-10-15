@@ -14,5 +14,6 @@
     "seed": "uv run --project services/agent python scripts/seed_demo.py",
     "build:sidecar": "cd services/agent && uv run python ../../scripts/build_sidecar.py",
     "build": "npm run build:sidecar && cd apps/desktop && npx tauri build --config src-tauri/tauri.release.conf.json"
-  }
+  },
+  "license": "Apache-2.0"
 }

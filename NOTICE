@@ -1,0 +1,8 @@
+Vico
+Copyright 2026 Chijioke Joseph and the Vico contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+Third-party components keep their own licenses; see THIRD_PARTY_NOTICES.md.
+
+This project uses the universal romanizer software 'uroman' written by Ulf Hermjakob,
+USC Information Sciences Institute (2015-2020) (optional speech server only).

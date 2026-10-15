@@ -3,6 +3,7 @@ name = "vico"
 version = "0.1.0"
 description = "Vico multilingual voice assistant"
 edition = "2021"
+license = "Apache-2.0"
 
 [lib]
 name = "vico_lib"
