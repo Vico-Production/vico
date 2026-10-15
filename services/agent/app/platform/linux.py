@@ -120,6 +120,26 @@ class LinuxAdapter(PlatformAdapter):
         self._run(["wmctrl", "-a", match.title])
         return match
 
+    def _geometry(self, args: list[str]):
+        if not self.x11 or not shutil.which("xdotool"):
+            return None
+        try:
+            text = self._run(["xdotool", *args, "getwindowgeometry", "--shell"], timeout=2)
+        except Exception:
+            return None
+        values = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+        try:
+            rect = (int(values["X"]), int(values["Y"]), int(values["WIDTH"]), int(values["HEIGHT"]))
+        except (KeyError, ValueError):
+            return None
+        return rect if rect[2] > 0 and rect[3] > 0 else None
+
+    def window_rect(self, title: str):
+        return self._geometry(["search", "--onlyvisible", "--limit", "1", "--name", title])
+
+    def focus_rect(self):
+        return self._geometry(["getactivewindow"])
+
     def type_text(self, text: str) -> None:
         if not self.x11:
             raise unsupported("Typing into other apps on Wayland")

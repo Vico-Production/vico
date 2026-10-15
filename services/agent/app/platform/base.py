@@ -25,6 +25,10 @@ class WindowInfo:
     pid: int | None = None
 
 
+# A rectangle on screen in physical pixels: (left, top, width, height).
+ScreenRect = tuple[int, int, int, int]
+
+
 def unsupported(what: str) -> VicoError:
     return VicoError(ErrorCode.UNSUPPORTED, f"{what} is not supported on this computer yet.", status=501)
 
@@ -91,6 +95,17 @@ class PlatformAdapter:
 
     def focused_is_secret(self) -> bool:
         return False
+
+    # --- where things are on screen (for the avatar; None when unknown) -------------------
+    def window_rect(self, title: str) -> ScreenRect | None:
+        return None
+
+    def element_rect(self, window: str, name: str) -> ScreenRect | None:
+        return None
+
+    def focus_rect(self) -> ScreenRect | None:
+        """The focused text field, or failing that the active window."""
+        return None
 
     # --- shell -------------------------------------------------------------------------
     def shell_argv(self, command: str, shell: str) -> list[str]:

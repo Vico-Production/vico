@@ -36,7 +36,7 @@ function health(over: Partial<Health> = {}): Health {
 function step(over: Partial<Step> = {}): Step {
   return { id: "s1", tool: "open_app", arguments: { name: "notepad" }, explanation: "", effect: "Start the app Notepad",
     targets: [], outcome: "approval_required", reason: "Approval is switched on.", content_upload: false,
-    approval: "pending", status: "awaiting_approval", message: "", verification: "", verified: false, data: {},
+    approval: "pending", status: "awaiting_approval", message: "", verification: "", verified: false, data: {}, stage: null,
     ...over };
 }
 

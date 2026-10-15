@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
-from app.agent import policy
+from app.agent import policy, stage
 from app.agent.language import guess_language
 from app.agent.offline_parser import OFFLINE_HELP, parse_offline
 from app.agent.prompts import PLANNER_SYSTEM, planner_user_prompt
@@ -71,6 +71,8 @@ class Step:
     verified: bool = False
     observation: str = ""
     data: dict[str, Any] = field(default_factory=dict)
+    # Where the step happens on screen (physical pixels), for the avatar; None if unknown.
+    stage: dict[str, Any] | None = None
 
     def public(self) -> dict[str, Any]:
         return {
@@ -79,6 +81,7 @@ class Step:
             "outcome": self.outcome, "reason": self.reason, "content_upload": self.content_upload,
             "approval": self.approval, "status": self.status, "message": self.message,
             "verification": self.verification, "verified": self.verified, "data": _safe_data(self.data),
+            "stage": self.stage,
         }
 
 
@@ -437,7 +440,11 @@ class Orchestrator:
 
         run.set_state(RunState.EXECUTING, step.tool)
         step.status = "running"
+        # Found alongside the step, never before it, so the avatar never slows the task down.
+        locating = asyncio.create_task(self._locate(ctx, step, pf.args))
         result = await self._execute(run, ctx, pf, step)
+        if not locating.done():
+            locating.cancel()
         run.set_state(RunState.VERIFYING, step.tool)
         step.message, step.verification, step.verified = result.message, result.verification, result.verified
         step.data, step.observation = result.data, result.observation or result.message
@@ -447,6 +454,12 @@ class Orchestrator:
             step.status = "succeeded" if result.verified else "unverified"
         self._record(run, step)
         return step
+
+    async def _locate(self, ctx: ToolContext, step: Step, args: Any) -> None:
+        try:
+            step.stage = await asyncio.wait_for(stage.locate(ctx, step.tool, args), 2.0)
+        except Exception:  # noqa: S110 - an unknown position just means no stage
+            step.stage = None
 
     async def _execute(self, run: Run, ctx: ToolContext, pf: policy.Preflight, step: Step) -> ToolResult:
         assert pf.spec is not None and pf.args is not None

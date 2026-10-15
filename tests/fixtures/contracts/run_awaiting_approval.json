@@ -29,7 +29,8 @@
         "message": "",
         "verification": "",
         "verified": false,
-        "data": {}
+        "data": {},
+        "stage": null
       }
     ],
     "pending_step_id": "st01",

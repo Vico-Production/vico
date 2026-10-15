@@ -10,7 +10,7 @@ function step(id: string, effect: string, outcome: Step["outcome"], status: Step
   return {
     id, tool: "browser_open", arguments: {}, explanation: "", effect, targets: [], outcome,
     reason: outcome === "confirm_required" ? "This may send, post or submit something, so Vico always asks first." : "",
-    content_upload: false, approval: "pending", status, message: "", verification: "", verified: false, data: {},
+    content_upload: false, approval: "pending", status, message: "", verification: "", verified: false, data: {}, stage: null,
   };
 }
 

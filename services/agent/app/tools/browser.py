@@ -74,6 +74,19 @@ def _is_search_field(facts: dict[str, Any]) -> bool:
     return facts.get("type") == "search" or "search" in hints or facts.get("name") in ("q", "query", "search_query")
 
 
+# Screen position of an element (or of the browser's tabs and address bar when el is null), in
+# physical pixels: window position plus the browser's frame, times the device pixel ratio.
+_SCREEN_JS = """(el) => {
+  const dpr = window.devicePixelRatio || 1;
+  const side = Math.max(0, (window.outerWidth - window.innerWidth) / 2);
+  const top = Math.max(0, window.outerHeight - window.innerHeight - side);
+  if (!el) return {x: window.screenX * dpr, y: window.screenY * dpr, width: window.outerWidth * dpr, height: top * dpr};
+  const r = el.getBoundingClientRect();
+  return {x: (window.screenX + side + r.left) * dpr, y: (window.screenY + top + r.top) * dpr,
+          width: r.width * dpr, height: r.height * dpr};
+}"""
+
+
 class BrowserController:
     def __init__(self, profile_dir: Path, channel: str = "auto"):
         self.profile_dir = profile_dir
@@ -156,6 +169,19 @@ class BrowserController:
                 if await item.is_visible():
                     return item
         raise VicoError(ErrorCode.NOT_FOUND, f"Nothing on the page matches '{target}'.", status=404)
+
+    async def screen_rect(self, target: str | None, kind: str = "click") -> dict[str, float] | None:
+        """An element's (or, with no target, the toolbar's) rectangle in physical screen pixels."""
+        if self._context is None:
+            return None
+        try:
+            if target is None:
+                page = await self.page(create=False)
+                return await page.evaluate(_SCREEN_JS, None)
+            locator = await asyncio.wait_for(self.locate(target, kind), 1.5)
+            return await locator.evaluate(_SCREEN_JS)
+        except Exception:
+            return None
 
     async def facts(self, locator: Any) -> dict[str, Any]:
         return await locator.evaluate(_FACTS_JS)

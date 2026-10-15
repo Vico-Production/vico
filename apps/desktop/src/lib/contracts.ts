@@ -145,6 +145,7 @@ export interface Step {
   verification: string;
   verified: boolean;
   data: Record<string, unknown>;
+  stage: { rect: { x: number; y: number; width: number; height: number }; kind: string } | null;
 }
 
 export interface Run {

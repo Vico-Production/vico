@@ -10,7 +10,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 from app.contracts import ErrorCode, VicoError
-from app.platform.base import AppEntry, PlatformAdapter, WindowInfo, detached_kwargs
+from app.platform.base import AppEntry, PlatformAdapter, ScreenRect, WindowInfo, detached_kwargs
 
 _PYWINAUTO_SPECIAL = set("+^%~(){}[]")
 _KEY_NAMES = {
@@ -146,7 +146,7 @@ class WindowsAdapter(PlatformAdapter):
 
         send_keys(to_pywinauto_keys(keys))
 
-    def click_element(self, window: str, name: str) -> str:
+    def _find_control(self, window: str, name: str):
         win = self._find_window(window)
         needle = name.lower()
         for ctrl in win.descendants():
@@ -155,9 +155,49 @@ class WindowsAdapter(PlatformAdapter):
             except Exception:  # noqa: S112 - controls can vanish mid-enumeration
                 continue
             if text and needle in text.lower() and ctrl.is_visible() and ctrl.is_enabled():
-                ctrl.click_input()
-                return text
+                return ctrl, text
         raise VicoError(ErrorCode.NOT_FOUND, f"No control named '{name}' in '{window}'.", status=404)
+
+    def click_element(self, window: str, name: str) -> str:
+        ctrl, text = self._find_control(window, name)
+        ctrl.click_input()
+        return text
+
+    @staticmethod
+    def _rect(r) -> ScreenRect | None:
+        width, height = int(r.right - r.left), int(r.bottom - r.top)
+        return (int(r.left), int(r.top), width, height) if width > 0 and height > 0 else None
+
+    def window_rect(self, title: str) -> ScreenRect | None:
+        try:
+            return self._rect(self._find_window(title).rectangle())
+        except Exception:
+            return None
+
+    def element_rect(self, window: str, name: str) -> ScreenRect | None:
+        try:
+            ctrl, _ = self._find_control(window, name)
+            return self._rect(ctrl.rectangle())
+        except Exception:
+            return None
+
+    def focus_rect(self) -> ScreenRect | None:
+        try:
+            from pywinauto.uia_defines import IUIA
+
+            rect = self._rect(IUIA().iuia.GetFocusedElement().CurrentBoundingRectangle)
+            if rect:
+                return rect
+        except Exception:  # noqa: S110 - fall back to the active window
+            pass
+        try:
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            box = wintypes.RECT()
+            if user32.GetWindowRect(user32.GetForegroundWindow(), ctypes.byref(box)):
+                return self._rect(box)
+        except Exception:  # noqa: S110 - unknown is a valid answer
+            pass
+        return None
 
     def focused_is_secret(self) -> bool:
         try:

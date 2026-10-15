@@ -13,7 +13,7 @@ const RUN_KEYS: Record<keyof Run, true> = {
 };
 const STEP_KEYS: Record<keyof Step, true> = {
   id: true, tool: true, arguments: true, explanation: true, effect: true, targets: true, outcome: true, reason: true,
-  content_upload: true, approval: true, status: true, message: true, verification: true, verified: true, data: true,
+  content_upload: true, approval: true, status: true, message: true, verification: true, verified: true, data: true, stage: true,
 };
 const SETTINGS_KEYS: Record<keyof Settings, true> = {
   onboarding_complete: true, cloud_consent: true,
