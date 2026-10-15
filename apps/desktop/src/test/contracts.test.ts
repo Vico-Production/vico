@@ -16,7 +16,7 @@ const STEP_KEYS: Record<keyof Step, true> = {
   content_upload: true, approval: true, status: true, message: true, verification: true, verified: true, data: true,
 };
 const SETTINGS_KEYS: Record<keyof Settings, true> = {
-  onboarding_complete: true, language: true, interpreter_source: true, interpreter_target: true, cloud_consent: true,
+  onboarding_complete: true, cloud_consent: true,
   require_approval: true, allow_send_without_approval: true, workspace: true, allowed_roots: true, stt_provider: true,
   llm_provider: true, fallback_consent: true, stt_model: true, llm_model: true, daily_request_budget: true,
   max_steps: true, browser_channel: true,

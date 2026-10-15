@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window may only use core defaults; all engine access goes through the app's own api_request command.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Vico's two windows may use core defaults (events, window info); engine access goes through the app's own api_request command.",
+  "windows": [
+    "aura",
+    "prompt"
+  ],
+  "permissions": [
+    "core:default"
+  ]
 }

@@ -76,9 +76,6 @@ export type ProviderName = "groq" | "gemini" | "none";
 
 export interface Settings {
   onboarding_complete: boolean;
-  language: Language;
-  interpreter_source: Language;
-  interpreter_target: Language;
   cloud_consent: boolean;
   require_approval: boolean;
   allow_send_without_approval: boolean;
@@ -149,7 +146,7 @@ export interface Run {
   id: string;
   state: RunState;
   mode: "cloud" | "offline";
-  language: Language;
+  language: Language | "auto";
   text: string;
   original: string;
   canonical: string;
@@ -178,16 +175,6 @@ export interface AudioStatus {
   max_s: number;
   level: number;
   full: boolean;
-}
-
-export interface Translation {
-  source: Language;
-  target: Language;
-  original: string;
-  text: string;
-  provider: string;
-  model: string;
-  latency_ms: number;
 }
 
 export interface LanguageCapability {

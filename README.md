@@ -1,13 +1,25 @@
 # Vico
 
-**Speak naturally. Get things done.** Vico is a lightweight desktop voice assistant for English, Yoruba, Hausa and Igbo (Nigerian Pidgin experimental). It has two modes:
+**Speak naturally. Get things done.** Vico is an agent that operates your computer for you. Press **Win + Alt + V** (Cmd + Option + V on Mac, later), then say or type what you want in English, Yorùbá, Hausa or Igbo: "open my browser and go to bbc.com", "open settings", "create a folder called Hackathon on my desktop", "open Claude and ask it to summarise my notes". Vico works out the language by itself, does the task, and answers in your language.
 
-- **Agent Mode** — say or type what you want ("create a folder called Hackathon", "open bbc.com and read me the top headline", "find my project notes and open them") and Vico does it on your computer: files, apps, windows, the web browser and shell commands. Every step shows its exact effect first and waits for your approval, unless you switch approval off.
-- **Interpreter Mode** — turn-based translation between two people, with the original and translated text side by side and spoken output where your computer has a voice for that language.
+There is no app window and no settings page. When summoned, the edges of the screen darken and glow, liquid light drips from the top edge into a pool at the bottom, and your words rise out of it. While Vico works, light races around the screen border. When it finishes, the screen flashes warm white and everything evaporates. Vico lives in the system tray.
+
+![Vico asking before it acts](docs/screenshots/06-approval.png)
 
 Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on Google Gemini's free tier, using one free key per user; everything that touches your computer runs locally. No paid service is required.
 
 > **Status:** hackathon build (v0.1.0). Language accuracy, memory use on 4 GB machines, and speech quality for Yoruba, Hausa and Igbo have **not been measured yet**. See [What is verified](#what-is-verified).
+
+## Using Vico
+
+| | |
+|---|---|
+| Summon | **Win + Alt + V**, or click the tray icon. (If another app owns that shortcut, Vico uses Ctrl + Alt + V.) |
+| Talk | Just speak. Vico stops listening when you pause, shows what it heard, and goes on its own unless you start editing. |
+| Type instead | Start typing at any moment (noisy room, quiet office). The microphone stops and your typing takes over. |
+| Approve | **Enter** to allow, **Esc** to stop. Risky steps (delete, commands, uploads, sends) need **Enter held down**. |
+| Leave | **Esc** at any time. A running task is cancelled. |
+| Settings | Tray icon → Settings: your Gemini code, an optional Groq backup code, and "ask me before acting". That's all. |
 
 ## How it works
 
@@ -24,9 +36,9 @@ flowchart LR
     V --> H[(SQLite history<br/>minimal, redacted)]
 ```
 
-1. You speak (push-to-talk, up to 15 s) or type. Audio stays in memory and is sent to the speech provider only if you allowed cloud processing.
-2. You check and can edit the transcript before anything happens.
-3. Non-English requests are translated to English; names and quoted text are kept as you said them.
+1. You speak (up to 15 s, ends on a pause) or type. Audio stays in memory and is sent to the speech provider only after you set up a code and accepted the one-line disclosure.
+2. You see what Vico heard and can change it before anything happens.
+3. Vico detects the language: plain English is recognised on the laptop; anything else is translated to English in one call, keeping names and quoted text exactly as you said them.
 4. The planner (a free-tier LLM) proposes **one step at a time** as strict JSON. It cannot run anything itself.
 5. Vico validates the step (schema, allowed folders, hard limits) and shows you the exact effect. You approve or reject.
 6. The step runs locally and its result is **checked** (folder exists, file content matches, window appeared, page loaded). Vico never reports success from model text alone.
@@ -53,9 +65,9 @@ Gemini's free tier limits requests per minute and per day (the daily limit reset
 Download the installer for your system from the project's Releases page:
 
 - **Windows:** `Vico_x.y.z_x64-setup.exe` (or `.msi`). WebView2 is installed automatically if missing.
-- **Linux:** `.deb` (Debian/Ubuntu), `.rpm` (Fedora) or `.AppImage`. Desktop control (typing into other apps) needs an X11 session with `xdotool` and `wmctrl`; on Wayland, files, apps, browser and shell still work.
+- **Linux:** `.deb` (Debian/Ubuntu), `.rpm` (Fedora) or `.AppImage`. Desktop control (typing into other apps) needs an X11 session with `xdotool` and `wmctrl`; on Wayland, files, apps, browser and shell still work. The see-through overlay needs a compositing desktop (GNOME, KDE and most others).
 
-On first launch Vico walks you through language, cloud consent, a free [Gemini access code](https://aistudio.google.com/apikey) (no card required), your workspace folder, and a self-check. Without a key Vico still works offline for simple typed English commands: `create folder Demo`, `find notes`, `open notepad`, `show files`, `save note Ideas: text`.
+On first launch Vico asks for one thing: a free [Gemini access code](https://aistudio.google.com/apikey) (no card required). An optional Groq code is used automatically whenever Gemini is busy. Without a key Vico still works offline for simple typed English commands: `create folder Demo`, `find notes`, `open notepad`, `show files`, `save note Ideas: text`.
 
 Browser control uses Microsoft Edge or Google Chrome if installed. Unsigned installers will trigger a Windows SmartScreen warning until code signing is set up.
 
@@ -74,6 +86,8 @@ Then:
 
 ```bash
 npm run dev          # desktop app with hot reload; the Rust shell starts the engine from services/agent/.venv
+# Browser preview of the whole experience with a scripted engine: npm --prefix apps/desktop run dev, then
+# open http://localhost:1420/?demo=1 and press Ctrl + Alt + V
 npm test             # Python, UI and Rust tests
 npm run lint         # ruff
 npm run typecheck    # mypy + tsc
@@ -87,9 +101,9 @@ npm run build        # package the engine and build installers for this OS
 
 ```text
 apps/desktop/            React + Vite UI and the Tauri (Rust) shell
-  src/components/        Agent, Interpreter, approval card, timeline, settings, history, onboarding
-  src/lib/               API client, contracts (mirrors Python), hooks, speech output
-  src-tauri/             Window, engine lifecycle, token-holding request proxy
+  src/views/             Aura (full-screen glow, liquid, narration), Prompt (words, approval, setup)
+  src/lib/               session driver, API client, contracts (mirrors Python), window bus, demo engine
+  src-tauri/             tray, global shortcut, two see-through windows, engine lifecycle, token proxy
 services/agent/app/      Python engine
   agent/                 planner contract, policy, state machine, offline parser, prompts
   tools/                 files, apps, desktop, browser, system (shell)
@@ -119,6 +133,7 @@ docs/                    build pack, implementation tasks, API contract, demo gu
 | Rust desktop shell compiles and launches | **Not yet on this machine** (missing MSVC Build Tools); compiled by CI |
 | Speech recognition accuracy for each language | **Not measured** — run `scripts/benchmark_languages.py` with consenting speakers |
 | Translation quality | **Not measured** |
+| Overlay look and flow (glow, drips, approval, cooldown, finish) | Captured in a browser at 1366×768 with the scripted demo; the real see-through desktop windows are **not yet seen running** (Rust shell not compiled here) |
 | Memory and startup time on a 4 GB laptop | **Not measured** |
 | Linux build and desktop control | **Not tested on a Linux machine yet** (CI builds and tests it) |
 

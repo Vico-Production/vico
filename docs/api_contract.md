@@ -30,23 +30,23 @@ Language tags: `en`, `yo`, `ha`, `ig`, `pcm` (experimental).
 | GET | `/secrets` | | `{groq: bool, gemini: bool}` (never the key) |
 | PUT / DELETE | `/secrets/{groq\|gemini}` | `{api_key}` | `{provider, configured}` |
 | GET | `/providers/{name}/models` | | models the account can use (requires cloud consent) |
-| POST | `/agent/runs` | `{text, language, original?}` | `Run` (409 if another task is active) |
+| POST | `/agent/runs` | `{text, language?}` | `Run` (409 if another task is active). Omit `language` to detect it |
+| GET | `/agent/runs/current` | | the most recent `Run`, or null |
 | GET | `/agent/runs/{id}` | | `Run` |
 | POST | `/agent/runs/{id}/decision` | `{step_id, approved, confirm}` | `Run`; `confirm: true` required for `confirm_required` steps |
 | POST | `/agent/runs/{id}/reply` | `{answer}` | `Run` (answers a clarification) |
 | POST | `/agent/runs/{id}/cancel` | | `Run` |
 | GET | `/agent/tools` | | tool names, categories, risk levels |
-| POST | `/audio/start` | `{language}` | recorder status |
+| POST | `/audio/start` | `{language?}` | recorder status (omit `language` to detect it) |
 | GET | `/audio/status` | | `{recording, elapsed_s, max_s, level, full}` |
 | POST | `/audio/stop` | `{transcribe}` | `{seconds, transcript}`; audio is discarded afterwards |
 | POST | `/audio/cancel` | | stops and discards |
-| POST | `/interpreter/translate` | `{text, source, target}` | `{original, text, provider, model, latency_ms}` |
 | GET / DELETE | `/history` | | entries / `{deleted}` |
 | POST | `/browser/close` | | closes Vico's browser window |
 
 ## Run
 
-`state` moves through `normalizing → planning → validating → awaiting_approval → executing → verifying → planning → … → completed | failed | cancelled`, with `awaiting_clarification` when the planner asks a question. Each `Step` carries the tool, redacted arguments, the human-readable `effect`, affected `targets`, the policy `outcome` (`allowed`, `approval_required`, `confirm_required`, `denied`), the user's `approval`, the execution `status` (`succeeded`, `unverified`, `failed`, `denied`, `rejected`) and the `verification` evidence.
+`state` moves through `normalizing → planning → validating → awaiting_approval → executing → verifying → planning → … → completed | failed | cancelled`, with `awaiting_clarification` when the planner asks a question and `cooling_down` (with `cooldown_until`) while every free model is rate-limited; the task resumes by itself. Each `Step` carries the tool, redacted arguments, the human-readable `effect`, affected `targets`, the policy `outcome` (`allowed`, `approval_required`, `confirm_required`, `denied`), the user's `approval`, the execution `status` (`succeeded`, `unverified`, `failed`, `denied`, `rejected`) and the `verification` evidence.
 
 ## Planner contract
 

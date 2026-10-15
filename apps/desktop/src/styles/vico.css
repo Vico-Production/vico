@@ -1,0 +1,911 @@
+/* Vico: the screen comes alive. A dark veil gathers at the edges, light runs along the
+   screen's border, liquid light drips from the top edge into a pool, and words rise out
+   of it. Everything is drawn over the user's own desktop; there are no windows or cards. */
+
+@property --vico-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+:root {
+  --display: "Segoe UI Variable Display", "Segoe UI Variable", "SF Pro Display", "Inter", system-ui, sans-serif;
+  --text: "Segoe UI Variable Text", "Segoe UI", "SF Pro Text", "Inter", system-ui, sans-serif;
+  --violet: #7c5cff;
+  --cyan: #21d4fd;
+  --rose: #ff5ecf;
+  --gold: #ffd38a;
+  --ink: rgba(5, 2, 16, 0.86);
+  --glow-text: 0 0 2px rgba(10, 4, 30, 0.95), 0 0 10px rgba(10, 4, 30, 0.9), 0 0 24px rgba(10, 4, 30, 0.7), 0 0 34px rgba(124, 92, 255, 0.75);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: #f4f1ff;
+  font-family: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- aura */
+
+.aura {
+  --level: 0;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.veil {
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+  transform: scale(1.08);
+  filter: blur(14px);
+  transition: opacity 0.9s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1), filter 1s ease;
+  /* Ominous: night gathers at the edges, the middle of your screen stays yours. */
+  background: radial-gradient(130% 120% at 50% 46%, rgba(3, 1, 12, 0) 52%, rgba(9, 3, 28, 0.55) 74%, rgba(2, 0, 9, 0.93) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(124, 92, 255, 0.28),
+    inset 0 0 90px 6px rgba(70, 30, 210, 0.5),
+    inset 0 0 26px rgba(33, 212, 253, 0.28);
+}
+
+.aura:not(.phase-hidden) .veil {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+  animation: vico-breathe 6s ease-in-out infinite;
+}
+
+.aura.deep .veil {
+  background:
+    radial-gradient(130% 120% at 50% 46%, rgba(3, 1, 12, 0.5) 30%, rgba(9, 3, 28, 0.78) 70%, rgba(2, 0, 9, 0.96) 100%);
+}
+
+.aura.phase-error .veil {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 80, 60, 0.35),
+    inset 0 0 110px 10px rgba(200, 40, 30, 0.42);
+}
+
+.aura.phase-leaving .veil {
+  opacity: 0;
+  transform: scale(1.05) translateY(-2%);
+  filter: blur(16px);
+}
+
+@keyframes vico-breathe {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(124, 92, 255, 0.28),
+      inset 0 0 90px 6px rgba(70, 30, 210, 0.5),
+      inset 0 0 26px rgba(33, 212, 253, 0.28);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(124, 92, 255, 0.4),
+      inset 0 0 140px 14px rgba(96, 46, 240, 0.58),
+      inset 0 0 40px rgba(33, 212, 253, 0.38);
+  }
+}
+
+/* Aurora: slow colour drifting along the edges only (the centre is masked away). */
+.aurora {
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  mix-blend-mode: screen;
+  -webkit-mask: radial-gradient(120% 110% at 50% 48%, transparent 56%, #000 88%);
+  mask: radial-gradient(120% 110% at 50% 48%, transparent 56%, #000 88%);
+}
+
+.aura:not(.phase-hidden):not(.phase-leaving) .aurora {
+  opacity: 0.9;
+}
+
+.aurora i {
+  position: absolute;
+  width: 62vmax;
+  height: 62vmax;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+}
+
+.aurora .a1 {
+  background: radial-gradient(circle, #6b3cff, transparent 62%);
+  left: -22vmax;
+  top: -26vmax;
+  animation: vico-drift-a 19s ease-in-out infinite alternate;
+}
+
+.aurora .a2 {
+  background: radial-gradient(circle, #10b8ff, transparent 62%);
+  right: -26vmax;
+  top: -14vmax;
+  animation: vico-drift-b 23s ease-in-out infinite alternate;
+}
+
+.aurora .a3 {
+  background: radial-gradient(circle, #ff3fc4, transparent 62%);
+  right: -20vmax;
+  bottom: -30vmax;
+  animation: vico-drift-a 27s ease-in-out infinite alternate-reverse;
+}
+
+.aurora .a4 {
+  background: radial-gradient(circle, #ffb35c, transparent 62%);
+  left: -26vmax;
+  bottom: -32vmax;
+  opacity: 0.35;
+  animation: vico-drift-b 31s ease-in-out infinite alternate-reverse;
+}
+
+.phase-working .aurora i,
+.phase-thinking .aurora i {
+  animation-duration: 6s;
+}
+
+.phase-cooling .aurora i {
+  filter: blur(70px) hue-rotate(160deg) saturate(0.4);
+}
+
+.phase-error .aurora i {
+  filter: blur(60px) hue-rotate(-60deg) saturate(1.4);
+}
+
+@keyframes vico-drift-a {
+  to {
+    transform: translate(18vmax, 10vmax) scale(1.15);
+  }
+}
+
+@keyframes vico-drift-b {
+  to {
+    transform: translate(-14vmax, 16vmax) scale(0.9);
+  }
+}
+
+/* The rim: light living on the very edge of the screen. */
+.rim {
+  position: fixed;
+  inset: 0;
+  padding: 2px;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.7s ease, padding 0.15s linear;
+  background: conic-gradient(from var(--vico-angle), var(--violet), var(--cyan) 25%, var(--rose) 50%, var(--gold) 70%, var(--violet));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: vico-spin 7s linear infinite;
+}
+
+.rim.bloom {
+  padding: 12px;
+  filter: blur(18px);
+}
+
+.aura:not(.phase-hidden):not(.phase-leaving) .rim {
+  opacity: 1;
+}
+
+.aura:not(.phase-hidden):not(.phase-leaving) .rim.bloom {
+  opacity: 0.85;
+}
+
+.rim.listening {
+  padding: calc(2px + var(--level) * 6px);
+  animation-duration: 4s;
+}
+
+.rim.bloom.listening {
+  padding: calc(12px + var(--level) * 22px);
+}
+
+/* Working: a comet of light races around the screen. */
+.rim.comet {
+  background:
+    conic-gradient(from var(--vico-angle), transparent 0 58%, rgba(124, 92, 255, 0.35) 72%, var(--cyan) 90%, #fff 97%, transparent 100%),
+    conic-gradient(from var(--vico-angle), rgba(124, 92, 255, 0.25), rgba(33, 212, 253, 0.2), rgba(124, 92, 255, 0.25));
+  padding: 3px;
+  animation-duration: 1.35s;
+}
+
+.rim.bloom.comet {
+  padding: 16px;
+}
+
+/* Cooling: the light turns to frost and slows down. */
+.rim.ice {
+  background: conic-gradient(from var(--vico-angle), #9fe7ff, #ffffff 30%, #7fb8ff 55%, #d9f6ff 80%, #9fe7ff);
+  animation-duration: 16s;
+}
+
+/* Done: one bright flash, white and gold. */
+.rim.flare {
+  background: conic-gradient(from var(--vico-angle), #fff, var(--gold), #fff7e0, #b9a6ff, #fff);
+  padding: 3px;
+  animation: vico-spin 3s linear infinite, vico-flash 1.4s ease-out 1;
+}
+
+.rim.bloom.flare {
+  padding: 18px;
+}
+
+.rim.ember {
+  background: conic-gradient(from var(--vico-angle), #ff3d3d, #ff8a3d 40%, #ff3d6e 70%, #ff3d3d);
+  animation: vico-spin 9s linear infinite, vico-ember 1.6s ease-in-out infinite;
+}
+
+@keyframes vico-spin {
+  to {
+    --vico-angle: 360deg;
+  }
+}
+
+@keyframes vico-flash {
+  0% {
+    filter: brightness(3) blur(0);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+@keyframes vico-ember {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.liquid {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.9s ease, filter 0.9s ease;
+}
+
+.aura.phase-leaving .liquid {
+  opacity: 0;
+  filter: blur(6px);
+}
+
+/* Done: for a moment the whole screen edge floods with warm light, then it lifts away. */
+.heaven {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  animation: vico-heaven 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  background:
+    radial-gradient(70% 55% at 50% 100%, rgba(255, 246, 225, 0.55), rgba(255, 211, 138, 0.18) 45%, transparent 70%),
+    conic-gradient(from 180deg at 50% 100%, transparent 0deg, rgba(255, 240, 210, 0.16) 8deg, transparent 16deg,
+      rgba(200, 185, 255, 0.14) 30deg, transparent 40deg, rgba(255, 240, 210, 0.12) 52deg, transparent 62deg,
+      transparent 298deg, rgba(255, 240, 210, 0.12) 308deg, transparent 318deg, rgba(200, 185, 255, 0.14) 330deg,
+      transparent 342deg, rgba(255, 240, 210, 0.16) 352deg, transparent 360deg);
+  box-shadow: inset 0 0 160px 50px rgba(255, 238, 205, 0.7);
+  mix-blend-mode: screen;
+}
+
+@keyframes vico-heaven {
+  0% {
+    opacity: 0;
+    transform: translateY(6%);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4%);
+  }
+}
+
+/* Narration: words materialise above the pool and dissolve upward. */
+.narration {
+  position: fixed;
+  left: 50%;
+  bottom: 214px;
+  transform: translateX(-50%);
+  width: min(920px, 92vw);
+  text-align: center;
+}
+
+.narration::before {
+  content: "";
+  position: absolute;
+  inset: -26px 14% -26px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(14, 6, 40, 0.6), rgba(14, 6, 40, 0.28) 55%, rgba(14, 6, 40, 0));
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.aura:not(.phase-hidden):not(.phase-leaving) .narration::before {
+  opacity: 1;
+}
+
+.narration .line,
+.result p {
+  margin: 0;
+  font: 380 clamp(21px, 1.9vw, 30px) / 1.32 var(--display);
+  letter-spacing: 0.01em;
+  color: #f6f2ff;
+  text-shadow: var(--glow-text);
+  animation: vico-materialise 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.result .echo {
+  font-size: clamp(25px, 2.4vw, 38px);
+  color: #fff6df;
+  text-shadow: 0 0 26px rgba(255, 211, 138, 0.9), 0 0 3px #fff;
+  margin-bottom: 8px;
+}
+
+.result.error p {
+  color: #ffd2c8;
+  text-shadow: 0 0 22px rgba(255, 70, 50, 0.8), 0 0 2px #fff;
+}
+
+.aura.phase-leaving .narration p {
+  animation: vico-vapour 0.8s ease-in forwards;
+}
+
+@keyframes vico-materialise {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+    transform: translateY(12px) scale(0.98);
+    letter-spacing: 0.14em;
+  }
+}
+
+@keyframes vico-vapour {
+  to {
+    opacity: 0;
+    filter: blur(16px);
+    transform: translateY(-40px);
+    letter-spacing: 0.2em;
+  }
+}
+
+/* Frost dial inside the pool while the free key rests. */
+.frost {
+  position: fixed;
+  left: 50%;
+  bottom: 60px;
+  width: 116px;
+  height: 116px;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  animation: vico-materialise 0.6s ease both;
+}
+
+.frost svg {
+  position: absolute;
+  inset: 0;
+}
+
+.frost-track {
+  fill: rgba(8, 20, 40, 0.55);
+  stroke: rgba(180, 230, 255, 0.18);
+  stroke-width: 3;
+}
+
+.frost-fill {
+  fill: none;
+  stroke: #bff0ff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px #7fd8ff);
+  transition: stroke-dashoffset 0.25s linear;
+}
+
+.frost span {
+  position: relative;
+  font: 300 24px var(--display);
+  color: #eafaff;
+  text-shadow: 0 0 14px #7fd8ff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- prompt */
+
+.prompt {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 28px 24px;
+  font-family: var(--display);
+  isolation: isolate;
+}
+
+.prompt::before {
+  content: "";
+  position: absolute;
+  left: 17%;
+  right: 17%;
+  bottom: 2%;
+  height: 40%;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  /* Fades to nothing well inside the window, so the window edge is never visible. */
+  background: radial-gradient(closest-side, rgba(14, 6, 40, 0.62), rgba(14, 6, 40, 0.3) 55%, rgba(14, 6, 40, 0));
+}
+
+.prompt.setup-mode::before {
+  height: 100%;
+  left: 0;
+  right: 0;
+}
+
+.prompt.empty::before {
+  display: none;
+}
+
+.words {
+  width: 100%;
+  max-height: 170px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  text-align: center;
+  font: 350 clamp(26px, 2.6vw, 40px) / 1.25 var(--display);
+  color: #fff;
+  caret-color: var(--cyan);
+  text-shadow: var(--glow-text);
+  field-sizing: content;
+  animation: vico-materialise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.words::placeholder {
+  color: rgba(232, 224, 255, 0.72);
+  text-shadow: 0 0 18px rgba(124, 92, 255, 0.7);
+}
+
+.listening .words::placeholder {
+  animation: vico-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes vico-pulse {
+  50% {
+    color: rgba(232, 224, 255, 0.35);
+  }
+}
+
+.fuse {
+  height: 2px;
+  width: 240px;
+  margin-top: 12px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--violet), var(--cyan), var(--gold));
+  box-shadow: 0 0 12px var(--cyan);
+  transform-origin: left center;
+  animation: vico-fuse 1.8s linear forwards;
+}
+
+@keyframes vico-fuse {
+  to {
+    transform: scaleX(0);
+    opacity: 0.4;
+  }
+}
+
+.hints {
+  margin: 16px 0 0;
+  font: 500 11px / 1.6 var(--text);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(240, 234, 255, 0.82);
+  text-shadow: 0 0 2px rgba(10, 4, 30, 0.9), 0 0 10px rgba(10, 4, 30, 0.8);
+  text-align: center;
+}
+
+kbd {
+  display: inline-block;
+  font: 600 10px / 1 var(--text);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: #eee8ff;
+  border: 1px solid rgba(200, 185, 255, 0.4);
+  background: rgba(124, 92, 255, 0.16);
+  vertical-align: 1px;
+}
+
+.link {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--cyan);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.note,
+.ask {
+  margin: 10px 0 0;
+  font: 400 14px var(--text);
+  color: rgba(235, 228, 255, 0.78);
+  text-align: center;
+}
+
+.ask {
+  order: -1;
+  margin: 0 0 12px;
+  font: 300 clamp(20px, 1.9vw, 28px) / 1.3 var(--display);
+  color: #fff;
+  text-shadow: var(--glow-text);
+}
+
+/* Approval: may I? */
+.approval {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  animation: vico-materialise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.eyebrow {
+  margin: 0;
+  font: 600 11px var(--text);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #efeaff;
+  text-shadow: 0 0 2px rgba(10, 4, 30, 0.95), 0 0 10px rgba(10, 4, 30, 0.85), 0 0 18px rgba(124, 92, 255, 0.9);
+}
+
+.effect {
+  margin: 0;
+  max-width: 880px;
+  white-space: pre-wrap;
+  font: 380 clamp(22px, 2.2vw, 32px) / 1.3 var(--display);
+  color: #fff;
+  text-shadow: var(--glow-text);
+}
+
+.why {
+  margin: 0;
+  font: 400 14px var(--text);
+  color: rgba(255, 212, 180, 0.9);
+}
+
+.choices {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.drop {
+  --fill: 0;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-radius: 999px;
+  font: 500 15px var(--text);
+  letter-spacing: 0.02em;
+  color: #fff;
+  cursor: pointer;
+  border: 1px solid rgba(200, 185, 255, 0.4);
+  background: rgba(18, 9, 44, 0.6);
+  box-shadow: 0 0 24px rgba(124, 92, 255, 0.3), inset 0 0 18px rgba(33, 212, 253, 0.1);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+  user-select: none;
+}
+
+.drop span,
+.drop kbd {
+  position: relative;
+  z-index: 1;
+}
+
+.drop:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.drop:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.drop.allow {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: linear-gradient(120deg, rgba(124, 92, 255, 0.9), rgba(33, 212, 253, 0.8));
+  box-shadow: 0 0 34px rgba(33, 212, 253, 0.55), 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+.drop.allow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.7), rgba(255, 211, 138, 0.85));
+  transform: scaleX(var(--fill));
+  transform-origin: left center;
+}
+
+.approval.hold .drop.allow {
+  background: linear-gradient(120deg, rgba(255, 94, 207, 0.85), rgba(255, 140, 80, 0.85));
+  box-shadow: 0 0 34px rgba(255, 94, 207, 0.55), 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+/* Setup: written on the dark, not in a box. */
+.setup {
+  width: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: vico-materialise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.setup .eyebrow,
+.setup .hints,
+.setup .choices {
+  align-self: center;
+}
+
+.lead {
+  margin: 0 0 4px;
+  text-align: center;
+  font: 300 22px / 1.4 var(--display);
+  color: #fff;
+  text-shadow: var(--glow-text);
+}
+
+.line-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.line-field span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font: 600 10.5px var(--text);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(225, 215, 255, 0.75);
+}
+
+.line-field em {
+  font-style: normal;
+  color: #8ff0c0;
+}
+
+.line-field a {
+  color: var(--cyan);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  font-weight: 500;
+}
+
+.line-field input {
+  width: 100%;
+  padding: 8px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(190, 170, 255, 0.4);
+  outline: none;
+  color: #fff;
+  font: 300 19px var(--display);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.line-field input:focus {
+  border-bottom-color: var(--cyan);
+  box-shadow: 0 1px 0 var(--cyan), 0 10px 22px -16px var(--cyan);
+}
+
+.line-field input::placeholder {
+  color: rgba(222, 212, 255, 0.35);
+}
+
+.line-field.quiet input {
+  font-size: 16px;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 14px var(--text);
+  color: #ece6ff;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+}
+
+.switch .track {
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(200, 185, 255, 0.25);
+  position: relative;
+  transition: background 0.2s;
+}
+
+.switch .track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .track {
+  background: linear-gradient(90deg, var(--violet), var(--cyan));
+  box-shadow: 0 0 12px rgba(33, 212, 253, 0.6);
+}
+
+.switch input:checked + .track::after {
+  transform: translateX(16px);
+}
+
+.switch input:focus-visible + .track {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+.fine {
+  margin: 0;
+  font: 400 12px / 1.5 var(--text);
+  color: rgba(222, 212, 255, 0.6);
+}
+
+.error-line {
+  margin: 0;
+  font: 400 14px var(--text);
+  color: #ffc4b8;
+}
+
+/* ---------------------------------------------------------------- browser preview */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  background: #0f1720;
+}
+
+.desk {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 40% at 70% 78%, rgba(255, 170, 90, 0.85), transparent 70%),
+    radial-gradient(80% 50% at 30% 90%, rgba(232, 120, 70, 0.7), transparent 70%),
+    linear-gradient(180deg, #6fa8d6 0%, #a9c9e4 38%, #f2c79a 70%, #d98a58 100%);
+}
+
+.desk-window {
+  position: absolute;
+  border-radius: 10px;
+  background: #f5f6f8;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.desk-window::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 34px;
+  border-radius: 10px 10px 0 0;
+  background: #e6e8ec;
+}
+
+.desk-window.a {
+  left: 7%;
+  top: 9%;
+  width: 46%;
+  height: 58%;
+}
+
+.desk-window.b {
+  right: 6%;
+  top: 22%;
+  width: 34%;
+  height: 46%;
+  background: #fbfbfc;
+}
+
+.desk-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46px;
+  background: rgba(20, 24, 32, 0.85);
+}
+
+.summon-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 22px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 12, 20, 0.6);
+  color: #fff;
+  font: 400 15px var(--text);
+  cursor: pointer;
+  z-index: 3;
+}
+
+.summon-hint small {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.stage-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: 190px;
+  transform: translateX(-50%);
+  width: min(960px, calc(100vw - 32px));
+  height: 440px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.stage-prompt.on {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rim,
+  .veil,
+  .narration .line,
+  .result p,
+  .words,
+  .approval,
+  .setup {
+    animation: none !important;
+  }
+}

@@ -41,7 +41,10 @@ impl Sidecar {
     pub fn new() -> Self {
         Sidecar {
             token: random_token(),
-            inner: Mutex::new(Inner { status: "starting", ..Default::default() }),
+            inner: Mutex::new(Inner {
+                status: "starting",
+                ..Default::default()
+            }),
         }
     }
 
@@ -116,7 +119,11 @@ impl Sidecar {
                 return Ok(dev_command(python));
             }
         }
-        let name = if cfg!(windows) { "vico-agent.exe" } else { "vico-agent" };
+        let name = if cfg!(windows) {
+            "vico-agent.exe"
+        } else {
+            "vico-agent"
+        };
         // Release builds ship the engine folder (PyInstaller one-dir) as an app resource.
         let mut candidates = Vec::new();
         if let Some(dir) = resource_dir {
@@ -131,7 +138,9 @@ impl Sidecar {
             .into_iter()
             .find(|p| p.exists())
             .map(Command::new)
-            .ok_or_else(|| "The Vico engine (vico-agent) is missing from this installation.".to_string())
+            .ok_or_else(|| {
+                "The Vico engine (vico-agent) is missing from this installation.".to_string()
+            })
     }
 
     fn spawn(&self, resource_dir: Option<PathBuf>) -> Result<(Child, u16), String> {
@@ -148,7 +157,9 @@ impl Sidecar {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        let mut child = cmd.spawn().map_err(|e| format!("Could not start the Vico engine: {e}"))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Could not start the Vico engine: {e}"))?;
         let stdout = child.stdout.take().ok_or("engine has no stdout")?;
         let (tx, rx) = mpsc::channel::<u16>();
         std::thread::spawn(move || {

@@ -13,22 +13,43 @@
     "windows": [
       {
         "title": "Vico",
-        "width": 1100,
-        "height": 780,
-        "minWidth": 420,
-        "minHeight": 560
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false,
+        "shadow": false,
+        "label": "aura",
+        "focus": false,
+        "width": 1280,
+        "height": 800
+      },
+      {
+        "title": "Vico",
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false,
+        "shadow": false,
+        "label": "prompt",
+        "width": 960,
+        "height": 440
       }
     ],
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "category": "Utility",
-    "shortDescription": "Multilingual voice assistant for your computer",
-    "longDescription": "Speak or type in English, Yoruba, Hausa or Igbo and Vico acts on your computer with your approval, or interprets a conversation.",
+    "shortDescription": "A multilingual agent that operates your computer",
+    "longDescription": "Summon Vico with Win+Alt+V, then speak or type in English, Yoruba, Hausa or Igbo, and it does it on your computer.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -37,10 +58,18 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     },
     "linux": {
-      "deb": { "depends": ["libportaudio2", "xdotool", "wmctrl"] }
+      "deb": {
+        "depends": [
+          "libportaudio2",
+          "xdotool",
+          "wmctrl"
+        ]
+      }
     }
   }
 }

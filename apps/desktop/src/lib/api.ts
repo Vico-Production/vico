@@ -11,7 +11,6 @@ import type {
   Run,
   Settings,
   Transcript,
-  Translation,
 } from "./contracts";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
@@ -96,22 +95,19 @@ export const api = {
   deleteSecret: (provider: string) => call<{ provider: string; configured: boolean }>("DELETE", `/secrets/${provider}`),
   models: (provider: string) => call<{ provider: string; models: string[] }>("GET", `/providers/${provider}/models`),
 
-  startRun: (text: string, language: Language, original?: string) =>
-    call<Run>("POST", "/agent/runs", { text, language, original: original ?? null }),
+  startRun: (text: string, language?: Language) => call<Run>("POST", "/agent/runs", { text, language: language ?? null }),
+  currentRun: () => call<Run | null>("GET", "/agent/runs/current"),
   getRun: (id: string) => call<Run>("GET", `/agent/runs/${id}`),
   decide: (id: string, stepId: string, approved: boolean, confirm = false) =>
     call<Run>("POST", `/agent/runs/${id}/decision`, { step_id: stepId, approved, confirm }),
   reply: (id: string, answer: string) => call<Run>("POST", `/agent/runs/${id}/reply`, { answer }),
   cancel: (id: string) => call<Run>("POST", `/agent/runs/${id}/cancel`),
 
-  startRecording: (language: Language) => call<AudioStatus>("POST", "/audio/start", { language }),
+  startRecording: (language?: Language) => call<AudioStatus>("POST", "/audio/start", { language: language ?? null }),
   recordingStatus: () => call<AudioStatus>("GET", "/audio/status"),
   stopRecording: (transcribe = true) =>
     call<{ seconds: number; transcript: Transcript | null }>("POST", "/audio/stop", { transcribe }),
   cancelRecording: () => call<{ recording: boolean }>("POST", "/audio/cancel"),
-
-  translate: (text: string, source: Language, target: Language) =>
-    call<Translation>("POST", "/interpreter/translate", { text, source, target }),
 
   history: () => call<HistoryEntry[]>("GET", "/history"),
   clearHistory: () => call<{ deleted: number }>("DELETE", "/history"),
