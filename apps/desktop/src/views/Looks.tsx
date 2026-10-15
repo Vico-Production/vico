@@ -3,7 +3,8 @@
 // each real step at the real spot on screen (see lib/acting.ts).
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { actPoint, type Act, type Motion } from "../lib/acting";
-import { ORB, PEEK_H, PEEK_W, type Look, type Mood, type Rect } from "../lib/layout";
+import { LOOKS, ORB, PEEK_H, PEEK_W, type Look, type Mood, type Rect } from "../lib/layout";
+import { MiniCanvasPreview } from "./CanvasLooks";
 
 /** Transient and lasting reactions, each tied to a real event (see session.ts). */
 export type Reaction =
@@ -401,6 +402,11 @@ const PREVIEW_TEXT: Record<Mood, string> = {
 
 /** A small screen that plays one look through a whole task, over and over. */
 export function LookPreview({ look }: { look: Look }) {
+  if (look === "swarm" || look === "runner" || look === "lens") return <MiniCanvasPreview look={look} />;
+  return <FigurePreview look={look} />;
+}
+
+function FigurePreview({ look }: { look: "peek" | "possession" | "yoyo" }) {
   const [i, setI] = useState(0);
   useEffect(() => {
     const id = window.setTimeout(() => setI((n) => (n + 1) % CYCLE.length), CYCLE[i].ms);
@@ -449,30 +455,50 @@ export function LookPreview({ look }: { look: Look }) {
   );
 }
 
-const NAMES: Record<Look, { name: string; line: string }> = {
+export const LOOK_NAMES: Record<Look, { name: string; line: string }> = {
   peek: { name: "Peek", line: "Holds the bottom edge, then leaps to whatever it clicks or types into." },
   possession: { name: "Possession", line: "No body. Lights up the window it is using; a ghost cursor does the clicking." },
   yoyo: { name: "Yo-yo", line: "Hangs from the top edge and drops onto whatever it is working on." },
+  swarm: { name: "Swarm", line: "Seventy little lights: a voice wave, a ring while thinking, an outline round what it presses." },
+  runner: { name: "Window runner", line: "Stands on your window's title bar, runs and jumps to the button, and stomps it." },
+  lens: { name: "Lens", line: "A disc of glass that magnifies the real screen under it and presses through it." },
 };
 
-export function LookPicker({ value, onChange }: { value: Look | null; onChange: (look: Look) => void }) {
+/** Pick one look, or tick several to take turns (rotate). Every card plays its look live. */
+export function LookPicker({ selected, rotate, onChange }: {
+  selected: Look[];
+  rotate: boolean;
+  onChange: (looks: Look[]) => void;
+}) {
+  const toggle = (look: Look) => {
+    if (!rotate) return onChange([look]);
+    onChange(selected.includes(look) ? selected.filter((l) => l !== look) : [...selected, look]);
+  };
   return (
-    <div className="looks" role="radiogroup" aria-label="How Vico appears">
-      {(Object.keys(NAMES) as Look[]).map((look) => (
-        <button
-          type="button"
-          key={look}
-          role="radio"
-          aria-checked={value === look}
-          className={`look ${value === look ? "chosen" : ""}`}
-          onClick={() => onChange(look)}
-          data-testid={`look-${look}`}
-        >
-          <LookPreview look={look} />
-          <strong>{NAMES[look].name}</strong>
-          <span>{NAMES[look].line}</span>
-        </button>
-      ))}
+    <div className={`looks ${rotate ? "rotating" : ""}`} role={rotate ? "group" : "radiogroup"}
+      aria-label="How Vico appears">
+      {LOOKS.map((look) => {
+        const on = selected.includes(look);
+        return (
+          <button
+            type="button"
+            key={look}
+            role={rotate ? "checkbox" : "radio"}
+            aria-checked={on}
+            className={`look ${on ? "chosen" : ""}`}
+            onClick={() => toggle(look)}
+            data-testid={`look-${look}`}
+          >
+            <LookPreview look={look} />
+            <strong>
+              {rotate && <i className={`tick-box ${on ? "on" : ""}`} aria-hidden="true" />}
+              {LOOK_NAMES[look].name}
+              {rotate && on && <em className="turn">#{selected.indexOf(look) + 1}</em>}
+            </strong>
+            <span>{LOOK_NAMES[look].line}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

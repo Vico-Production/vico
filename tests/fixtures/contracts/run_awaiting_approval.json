@@ -51,7 +51,8 @@
         "note": "Create the folder ~/Documents/VicoDemo/Demo"
       }
     ],
-    "control": null
+    "control": null,
+    "version": 3
   },
   "error": null
 }

@@ -4,9 +4,10 @@
 // drag it somewhere else.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { listen } from "../lib/bus";
-import { ORB, peekHome, usableTarget, yoyoHome, yoyoLength } from "../lib/layout";
+import { ORB, bottomHome, peekHome, usableTarget, yoyoHome, yoyoLength } from "../lib/layout";
 import { native } from "../lib/native";
 import { moodFor, type Intent, type Phase, type Session } from "../lib/session";
+import { CanvasAvatar, runnerHome, type World } from "./CanvasLooks";
 import { PeekAvatar, PossessionAvatar, YoyoAvatar, faceFor, type Reaction } from "./Looks";
 
 function useScreen() {
@@ -133,6 +134,8 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
   // Dodging and dragging use different parts: the body ducks away from a slowing cursor, the
   // handle stays put and is what you grab.
   const [dodge, setDodge] = useState(false);
+  const [dodgeAt, setDodgeAt] = useState<{ x: number; y: number } | null>(null);
+  const [noMagnifier, setNoMagnifier] = useState(false);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const [settle, setSettle] = useState(0);
   const last = useRef<Point | null>(null);
@@ -150,12 +153,15 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
       interactive.current = overHandle;
       void native.auraInteractive?.(overHandle);
     }
-    const body = el.querySelector(".peek-figure .hd, .orb, .possession-pill")?.getBoundingClientRect();
+    const body = el.querySelector(".peek-figure .hd, .orb, .possession-pill, .canvas-handle")?.getBoundingClientRect();
     if (!body || drag) return;
     const speed = prev ? Math.hypot(p.x - prev.x, p.y - prev.y) / Math.max(1, p.t - prev.t) : 1;
     if (!overHandle && near(p, body, 60) && speed < 0.35) {
       leftAt.current = 0;
-      if (!dodge) setDodge(true);
+      if (!dodge) {
+        setDodge(true);
+        setDodgeAt({ x: p.x, y: p.y });
+      }
     } else if (dodge && !near(p, body, 140)) {
       if (!leftAt.current) leftAt.current = p.t;
       if (p.t - leftAt.current > 1000) setDodge(false);
@@ -173,11 +179,13 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
     const move = (e: PointerEvent) => setDrag({ x: e.clientX, y: e.clientY });
     const up = (e: PointerEvent) => {
       const spots = { ...session.spots };
+      const t = usableTarget(session.target, screen);
       if (look === "possession") {
-        const t = usableTarget(session.target, screen);
         spots.possession_label = t && e.clientY > t.y + t.height / 2 ? 1 : 0;
+      } else if (look === "runner") {
+        spots.runner = t ? Math.max(0, Math.min(1, (e.clientX - t.x) / t.width)) : 0.3;
       } else {
-        spots[look === "peek" ? "peek" : "yoyo"] = Math.max(0, Math.min(1, e.clientX / screen.width));
+        spots[look] = Math.max(0, Math.min(1, e.clientX / screen.width));
       }
       setDrag(null);
       if (look === "yoyo") setSettle((n) => n + 1);
@@ -225,6 +233,30 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
             style={leftSide ? { right: screen.width - home + ORB / 2 + 16, top: length } : { left: home + ORB / 2 + 16, top: length }}>
             <Words session={session} withNarration />
           </div>
+        )}
+      </>
+    );
+  } else if (look === "swarm" || look === "runner" || look === "lens") {
+    const target = usableTarget(session.target, screen);
+    const home = look === "runner"
+      ? runnerHome({ target, height: screen.height }, drag ? drag.x : screen.width / 2,
+        drag && target ? (drag.x - target.x) / target.width : session.spots.runner)
+      : { ...bottomHome(look, screen, session.spots), ...(drag ? { x: drag.x } : {}) };
+    const world: World = { width: screen.width, height: screen.height, home, target, act, mood, reaction,
+      level: session.level, dodge: dodge ? dodgeAt : null };
+    const above = look === "lens" ? 80 : look === "runner" ? 64 : 120;
+    body = (
+      <>
+        <CanvasAvatar look={look} world={world} onGrab={grab} onMagnifier={(ok) => setNoMagnifier(!ok)} />
+        {hasWords && present && !act?.rect && (
+          <div className={`bubble below-none mood-${mood}`} style={{ left: home.x, bottom: screen.height - home.y + above }}>
+            <Words session={session} withNarration />
+          </div>
+        )}
+        {look === "lens" && noMagnifier && present && (
+          <p className="lens-note" style={{ left: home.x + 80, top: home.y - 12 }}>
+            This computer can't magnify the screen, so the Lens is clear glass.
+          </p>
         )}
       </>
     );

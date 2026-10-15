@@ -25,9 +25,10 @@ export type Phase =
   | "done"
   | "error"
   | "staying" // the user asked Vico to stay: it dozes until called
+  | "welcome" // the last setup card: how to get back to settings
   | "leaving";
 
-export type Spots = Partial<Record<"peek" | "yoyo" | "possession_label", number>>;
+export type Spots = Partial<Record<"peek" | "yoyo" | "possession_label" | "swarm" | "runner" | "lens", number>>;
 
 export interface Session {
   phase: Phase;
@@ -65,7 +66,7 @@ export type Intent =
   | { type: "submit" }
   | { type: "approve"; confirm: boolean }
   | { type: "reject" }
-  | { type: "configured"; look: Look }
+  | { type: "configured"; look: Look; first?: boolean }
   | { type: "reset" }
   | { type: "spot"; spots: Spots };
 
@@ -76,6 +77,7 @@ export const INTENT_EVENT = "vico://intent";
 export const PROMPT_PHASES: Phase[] = [
   "setup",
   "settings",
+  "welcome",
   "listening",
   "transcribing",
   "review",
@@ -127,6 +129,8 @@ export function moodFor(phase: Phase): Mood {
     case "done":
     case "staying":
       return "done";
+    case "welcome":
+      return "listen";
     case "error":
       return "sad";
     default:
@@ -206,6 +210,10 @@ export class VicoDriver {
   private spots: Spots = {};
   private metrics: Metrics | null = null;
   private targetPoller: number | null = null;
+  private following: string | null = null; // the run whose changes are being waited for
+  private ready: { onboarded: boolean; speech: boolean; offline: boolean } | null = null; // from the last summon
+  private rotation: { looks: Look[]; on: boolean } = { looks: [], on: false };
+  private toldNoYoruba = false;
 
   constructor(private readonly windows: Native = native) {}
 
@@ -303,6 +311,7 @@ export class VicoDriver {
   }
 
   private stopPolling() {
+    this.following = null;
     if (this.poller !== null) window.clearInterval(this.poller);
     if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
     this.poller = this.levelPoller = null;
@@ -315,6 +324,8 @@ export class VicoDriver {
       try {
         const settings = await api.settings();
         this.remember(settings.look, settings.spots);
+        this.rotation = { looks: settings.looks ?? [settings.look], on: Boolean(settings.rotate) };
+        this.voice = Boolean(settings.voice_replies);
         this.metrics = (await this.windows.auraMetrics?.()) ?? null;
         const launch = await this.windows.launchInfo?.();
         if (launch) this.watchForWakePhrase(); // listening for "Vico" from the moment it is installed
@@ -384,10 +395,19 @@ export class VicoDriver {
         return;
       case "configured":
         this.remember(intent.look);
-        this.set({ phase: "done", narration: "", localized: null,
-          message: "You're all set. Just say \"Vico\" or press Win + Alt + V whenever you need me." });
-        this.react("celebrate");
-        this.timer = window.setTimeout(() => this.leave(), 3600);
+        this.ready = null; // settings changed: check again on the next summon
+        void api.settings().then((s) => {
+          this.rotation = { looks: s.looks ?? [s.look], on: Boolean(s.rotate) };
+        }).catch(() => undefined);
+        if (intent.first) {
+          // The last setup card stays until a key, typing or talking to Vico.
+          this.set({ phase: "welcome", narration: "", message: null, localized: null });
+          this.react("greet");
+          return;
+        }
+        this.set({ phase: "done", narration: "", localized: null, message: "Saved." });
+        this.react("gotit");
+        this.timer = window.setTimeout(() => this.leave(), 2000);
         return;
     }
   }
@@ -403,25 +423,43 @@ export class VicoDriver {
       else this.set({});
       return;
     }
-    const arriving = this.state.phase === "hidden" || this.state.phase === "leaving";
+    const arriving = ["hidden", "leaving", "welcome"].includes(this.state.phase);
     this.clearTimer();
     this.stopPolling();
     if (this.state.phase === "listening") void api.cancelRecording().catch(() => undefined); // a follow-up
     this.run = null;
     this.misses = 0;
+    // Warm the AI connection now, in parallel with everything below.
+    void api.warm().catch(() => undefined);
+    if (arriving) {
+      this.rotate();
+      // Show up at once: the reaction never waits for the network.
+      this.set({ ...INITIAL, phase: "thinking", staying: this.state.staying, target: this.state.target });
+      this.react("arrive");
+    }
     let speech = false;
     let offline = false;
-    try {
+    const check = async () => {
       const [settings, health] = await Promise.all([api.settings(), api.health()]);
       this.remember(settings.look, settings.spots);
-      if (!settings.onboarding_complete || (!health.cloud_ready && health.online)) {
+      this.rotation = { looks: settings.looks ?? [settings.look], on: Boolean(settings.rotate) };
+      this.voice = Boolean(health.voice_ready);
+      this.ready = { onboarded: settings.onboarding_complete && (health.cloud_ready || !health.online),
+        speech: health.speech_ready, offline: !health.online };
+      return this.ready;
+    };
+    try {
+      // Use what the last summon learned and re-check in the background; ask first only the first time.
+      const cached = this.ready;
+      const known = cached ?? (await check());
+      if (cached) void check().catch(() => undefined);
+      if (!known.onboarded) {
         if (woke) void api.cancelRecording().catch(() => undefined);
         this.set({ ...INITIAL, phase: "setup" });
         return;
       }
-      speech = health.speech_ready;
-      this.voice = Boolean(health.voice_ready);
-      offline = !health.online;
+      speech = known.speech;
+      offline = known.offline;
     } catch (err) {
       if (woke) void api.cancelRecording().catch(() => undefined);
       this.set({ ...INITIAL, phase: "error", message: errorMessage(err) });
@@ -436,6 +474,16 @@ export class VicoDriver {
     if (speech) await this.listen(woke);
   }
 
+  /** With rotation on, each new summon after Vico has rested uses the next look in turn. */
+  private rotate() {
+    const { looks, on } = this.rotation;
+    if (!on || looks.length < 2) return;
+    const next = looks[(looks.indexOf(this.look) + 1) % looks.length];
+    this.look = next;
+    this.set({});
+    void api.updateSettings({ look: next }).catch(() => undefined);
+  }
+
   async listen(alreadyRecording = false, followUp = false) {
     this.heard = false;
     this.quietSince = Date.now();
@@ -447,7 +495,9 @@ export class VicoDriver {
     this.set({ phase: "listening", text: "", level: 0, followUp, micHint: null, act: null,
       narration: followUp ? "Anything else? I'm listening" : "" });
     try {
-      if (!alreadyRecording) await api.startRecording();
+      // The engine hears the pause and starts transcribing by itself, with no round trip.
+      if (alreadyRecording) await api.autoStop();
+      else await api.startRecording(undefined, true);
     } catch (err) {
       if (followUp) return this.leave();
       this.set({ phase: "typing", followUp: false, narration: errorMessage(err) });
@@ -455,7 +505,7 @@ export class VicoDriver {
     }
     const limit = followUp ? FOLLOW_UP_MS : NO_SPEECH_MS;
     this.levelPoller = window.setInterval(async () => {
-      if (this.state.phase !== "listening") return;
+      if (this.state.phase !== "listening" && this.state.phase !== "transcribing") return;
       try {
         const status = await api.recordingStatus();
         const now = Date.now();
@@ -463,20 +513,31 @@ export class VicoDriver {
         // silence until someone speaks, and Vico tries the others by itself.
         const hint = status.silent ? "I can't hear your microphone yet. Speak up, or check it isn't muted." : null;
         if (hint !== this.state.micHint) this.set({ micHint: hint });
-        // Only quiet readings teach the room level, so someone who talks straight away is still heard.
-        if (!this.heard && status.level < ROOM_MAX) {
-          floor = floor === 0 ? status.level : Math.min(floor * 1.02 + 0.001, status.level);
-        }
-        if (status.level > Math.max(SPEECH_LEVEL, floor * NOISE_MARGIN)) {
-          if (!this.heard) this.speechSince = now;
-          this.heard = true;
-          this.quietSince = now;
-        }
         this.set({ level: status.level });
-        const spoken = now - this.speechSince;
-        const pause = spoken < SHORT_SPEECH_MS ? SILENCE_SHORT_MS : SILENCE_MS;
-        const finished = this.heard && now - this.quietSince > pause;
-        if (finished || status.full || now - started > status.max_s * 1000) {
+        if (status.stage) {
+          // The engine ends the recording when you stop talking and transcribes at once.
+          this.heard = Boolean(status.heard);
+          if (status.error) return void this.heardResult(null, status.error.message);
+          if (status.result) return void this.heardResult(status.result.transcript?.text ?? "", null);
+          if (status.stage === "transcribing") {
+            if (this.state.phase === "listening") this.set({ phase: "transcribing", level: 0, followUp: false });
+            return;
+          }
+        } else {
+          // Engines without endpointing: decide here.
+          if (!this.heard && status.level < ROOM_MAX) {
+            floor = floor === 0 ? status.level : Math.min(floor * 1.02 + 0.001, status.level);
+          }
+          if (status.level > Math.max(SPEECH_LEVEL, floor * NOISE_MARGIN)) {
+            if (!this.heard) this.speechSince = now;
+            this.heard = true;
+            this.quietSince = now;
+          }
+          const spoken = this.quietSince - this.speechSince;
+          const pause = spoken < SHORT_SPEECH_MS ? SILENCE_SHORT_MS : SILENCE_MS;
+          if (this.heard && now - this.quietSince > pause) return void this.stopListening();
+        }
+        if (status.full || now - started > status.max_s * 1000) {
           void this.stopListening();
         } else if (!this.heard && now - started > limit) {
           void this.nothingHeard(followUp);
@@ -509,8 +570,28 @@ export class VicoDriver {
     await this.listen();
   }
 
+  /** What the engine heard (it stopped and transcribed by itself). */
+  private heardResult(text: string | null, error: string | null) {
+    if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
+    this.levelPoller = null;
+    if (error !== null) {
+      this.react("huh");
+      return this.set({ phase: "typing", followUp: false, level: 0, narration: error });
+    }
+    const said = (text ?? "").trim();
+    if (!said) {
+      this.react("huh");
+      return this.set({ phase: "typing", followUp: false, level: 0,
+        narration: "I didn't catch that. Say it again, or type it." });
+    }
+    this.react("gotit");
+    this.set({ phase: "review", text: said, reviewUntil: Date.now() + REVIEW_MS, followUp: false, level: 0 });
+    this.timer = window.setTimeout(() => void this.submit(), REVIEW_MS);
+  }
+
   async stopListening() {
-    if (this.state.phase !== "listening" || this.busy) return;
+    if (!["listening", "transcribing"].includes(this.state.phase) || this.busy) return;
+    if (this.state.phase === "transcribing") return; // the engine is already on it
     this.busy = true;
     if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
     this.levelPoller = null;
@@ -569,16 +650,28 @@ export class VicoDriver {
     }
   }
 
+  /** Follow the run: the engine answers the moment it changes, so there is no polling delay. */
   private startPolling() {
-    if (this.poller !== null) window.clearInterval(this.poller);
-    this.poller = window.setInterval(async () => {
-      if (!this.run) return;
-      try {
-        this.apply(await api.getRun(this.run.id));
-      } catch (err) {
-        this.fail(errorMessage(err), false);
+    const run = this.run;
+    if (!run) return;
+    this.following = run.id;
+    void (async () => {
+      let version = -1;
+      while (this.following === run.id) {
+        try {
+          const next = await api.waitRun(run.id, version);
+          if (this.following !== run.id) return;
+          const same = next.version === version;
+          version = next.version;
+          this.apply(next);
+          if (TERMINAL_STATES.includes(next.state)) return;
+          if (same) await new Promise((r) => window.setTimeout(r, 150)); // an engine without long waits
+        } catch (err) {
+          if (this.following === run.id) this.fail(errorMessage(err), false);
+          return;
+        }
       }
-    }, 200);
+    })();
   }
 
   /** The step being acted out: the newest one that has started, at its real place on screen. */
@@ -639,6 +732,20 @@ export class VicoDriver {
   private obey(run: Run) {
     const control = run.control!;
     const message = run.message_localized || run.message;
+    if (control.action === "settings") {
+      // The only way into settings: asking Vico for them.
+      this.set({ ...INITIAL, phase: "settings", speech: this.state.speech });
+      return;
+    }
+    if (control.action === "voice") {
+      this.voice = control.value === "on";
+      this.ready = null;
+      this.set({ phase: "done", message, localized: null, act: null });
+      this.react(this.voice ? "greet" : "gotit");
+      this.afterResult();
+      void this.speakResult(message, run.language);
+      return;
+    }
     if (control.action === "go") {
       this.set({ phase: "done", message, localized: null, staying: false, act: null });
       this.react("bye");
@@ -678,10 +785,10 @@ export class VicoDriver {
 
   /** Speak the answer in the user's language (YarnGPT on their speech server), from memory. */
   private async speakResult(text: string | null, language: string) {
-    if (!this.voice || !text || !["en", "yo", "ha", "ig"].includes(language)) return;
+    if (!this.voice || !text || !["en", "yo", "ha", "ig", "pcm"].includes(language)) return;
     try {
       const out = await api.speak(text, language as Language);
-      if (this.state.phase !== "done") return;
+      if (!["done", "listening"].includes(this.state.phase)) return;
       const bytes = Uint8Array.from(atob(out.audio_b64), (c) => c.charCodeAt(0));
       const url = URL.createObjectURL(new Blob([bytes], { type: out.mime }));
       const audio = new Audio(url);
@@ -691,8 +798,14 @@ export class VicoDriver {
         this.audio = null;
       };
       await audio.play();
-    } catch {
-      /* the answer stays on screen as text */
+    } catch (err) {
+      // The answer stays on screen as text. Yorùbá has no free voice without the user's own
+      // speech server: say so once, plainly.
+      if (language === "yo" && !this.toldNoYoruba) {
+        this.toldNoYoruba = true;
+        this.set({ narration: "I can't speak Yorùbá aloud without your own speech server yet, so I'll answer in text." });
+      }
+      void err;
     }
   }
 

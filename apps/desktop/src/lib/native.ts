@@ -46,6 +46,19 @@ async function auraInteractive(on: boolean): Promise<void> {
   await invoke("aura_interactive", { on }).catch(() => undefined);
 }
 
+/** Magnify the real screen under the Lens; false where that is not possible. */
+async function lensShow(x: number, y: number, radius: number, zoom: number): Promise<boolean> {
+  if (!inTauri) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("lens_show", { x, y, radius, zoom }).catch(() => false);
+}
+
+async function lensHide(): Promise<void> {
+  if (!inTauri) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("lens_hide").catch(() => undefined);
+}
+
 export interface Native {
   showAura(): Promise<void>;
   hideAura(): Promise<void>;
@@ -56,6 +69,8 @@ export interface Native {
   foregroundRect?(): Promise<Rect | null>;
   auraMetrics?(): Promise<{ x: number; y: number; scale: number } | null>;
   auraInteractive?(on: boolean): Promise<void>;
+  lensShow?(x: number, y: number, radius: number, zoom: number): Promise<boolean>;
+  lensHide?(): Promise<void>;
 }
 
 export const native: Native = {
@@ -68,4 +83,6 @@ export const native: Native = {
   foregroundRect,
   auraMetrics,
   auraInteractive,
+  lensShow,
+  lensHide,
 };

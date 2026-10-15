@@ -134,3 +134,48 @@ def test_look_is_saved_validated_and_cleared_by_reset(client):
     assert client.put("/api/v1/settings", headers=AUTH, json={"look": "dragon"}).status_code == 422
     client.post("/api/v1/reset", headers=AUTH)
     assert client.get("/api/v1/settings", headers=AUTH).json()["data"]["look"] == "peek"
+
+
+def test_engine_decides_when_speech_ends_and_transcribes(monkeypatch):
+    import time as _time
+
+    from app.api import build_services as _build
+    from app.audio.recorder import Recorder
+    from app.providers.base import Transcript
+
+    feeds = []
+
+    class Stream:
+        def __init__(self, cb):
+            feeds.append(cb)
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    services = _build(secrets=SecretStore(MemorySecretBackend()), recorder=Recorder(lambda cb: Stream(cb)))
+
+    async def transcribe(wav, mime, language):
+        return Transcript(text="open notepad", language="en", provider="gemini", model="m", latency_ms=5)
+
+    monkeypatch.setattr(services.hub, "transcribe", transcribe)
+    with TestClient(create_app(TOKEN, services)) as c:
+        assert c.post("/api/v1/audio/start", headers=AUTH, json={"auto_stop": True}).json()["data"]["stage"] == "recording"
+        import array
+        import math
+
+        speech = array.array("h", (int(9000 * math.sin(i / 7)) for i in range(800))).tobytes()
+        for _ in range(40):  # two seconds of talking, as a microphone delivers it
+            feeds[0](speech)
+            _time.sleep(0.05)
+        deadline = _time.monotonic() + 8
+        state = {}
+        while _time.monotonic() < deadline:
+            feeds[0](b"\0\0" * 800)  # quiet after speaking
+            state = c.get("/api/v1/audio/status", headers=AUTH).json()["data"]
+            if state.get("result"):
+                break
+            _time.sleep(0.05)
+        assert state["result"]["transcript"]["text"] == "open notepad" and state["heard"] is True

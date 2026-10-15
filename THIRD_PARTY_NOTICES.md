@@ -30,6 +30,9 @@ cd apps/desktop/src-tauri && cargo install cargo-about && cargo about generate a
 | Vosk (vosk-api, bundles libvosk/Kaldi) | on-device "Hey Vico" wake phrase | Apache-2.0 |
 | vosk-model-small-en-us-0.15 (model) | wake phrase recognition; downloaded once from alphacephei.com, SHA-256 checked | Apache-2.0 |
 | tauri-plugin-autostart | start Vico at sign-in | MIT OR Apache-2.0 |
+| Gemini 3.8 Flash / Flash-Lite TTS (cloud API, user's own key, free tier) | spoken replies in English, Hausa, Igbo | Google API terms |
+| Windows SAPI / espeak-ng (system voices, not bundled) | offline English replies | part of Windows / GPL-3.0 (system package) |
+| Windows Magnification API (part of Windows) | the Lens look | part of Windows |
 | Playwright for Python (bundles a Node.js driver) | browser control | Apache-2.0 |
 | pywinauto (+ comtypes, pywin32) | Windows desktop control | BSD-3-Clause / MIT / PSF |
 | pytest, ruff, mypy, PyInstaller | development and packaging | MIT / MIT / MIT / GPL-2.0 with bootloader exception |

@@ -140,6 +140,20 @@ class GeminiProvider:
 
         return await self.models.run(await self.chain(kind), attempt, audio_seconds)
 
+    async def speak(self, text: str, model: str) -> bytes:
+        """WAV audio of `text` from a Gemini TTS model, kept in memory."""
+        from app.providers.tts import gemini_tts_audio, gemini_tts_body
+
+        body = gemini_tts_body(text)
+        body["model"] = model
+        req = self.client.build_request("POST", f"{BASE_URL}/interactions", headers=self._headers, json=body,
+                                        timeout=30)
+        data = await send(self.client, self.name, QuotaTracker(daily_budget=UNLIMITED), req)
+        audio = gemini_tts_audio(data)
+        if not audio:
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "Gemini returned no audio.", status=502)
+        return audio
+
     async def complete(self, system: str, user: str, *, json_mode: bool) -> Completion:
         config: dict = {"temperature": 0}
         if json_mode:

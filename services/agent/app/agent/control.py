@@ -1,4 +1,5 @@
-"""Requests about Vico itself rather than a task: stay, go, move somewhere, or just a greeting.
+"""Requests about Vico itself rather than a task: stay, go, move somewhere, a greeting, opening
+its own settings, or switching spoken replies on or off.
 
 Recognised on the computer first (common English, Pidgin, Yorùbá, Hausa and Igbo phrasings),
 so the reply is instant and needs no AI call. Anything else is classified by the same AI call
@@ -11,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-ACTIONS = ("stay", "go", "move", "greet")
+ACTIONS = ("stay", "go", "move", "greet", "settings", "voice")
 PLACES = ("left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "away")
 MAX_WORDS = 8  # longer requests are tasks ("wait for the page to load, then ...")
 
@@ -32,6 +33,24 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"(?:(?:move|go|shift|walk)(?: yourself)?(?: over)?(?: to)?(?: the)? (?:top |bottom |upper |lower )?"
         r"(?:left|right|top|bottom|up|down|corner|side|aside|away)(?: (?:side|corner|edge))?|get out of my way|"
         r"move out of (?:my|the) way|shift comot|put your (?:label|pill|name) (?:at|on|to) the (?:top|bottom))", re.I)),
+    # Vico's own settings. Plain "open settings" is Windows Settings (a task), so this needs
+    # "your/Vico's settings" or names the codes or the look.
+    ("settings", re.compile(
+        r"(?:(?:open|show|change|go to)(?: up)? (?:your|vico'?s|the vico) (?:settings|setup|options)"
+        r"(?: (?:make i change am|so i can change (?:it|them)))?|vico (?:settings|setup)|your settings|"
+        r"change (?:my|the|your) (?:gemini |groq )?(?:key|code|access code|api key)s?|"
+        r"change (?:your|how you) look|change your appearance|change your look(?:s)?)", re.I)),
+    # Spoken replies on or off: only these whole requests. Talking as part of a task ("talk to
+    # my friend on WhatsApp", "call mum") is never this.
+    ("voice_on", re.compile(
+        r"(?:talk to me|talk back to me|reply with (?:your )?voice|answer (?:me )?with (?:your )?voice|"
+        r"speak (?:your answers|to me|your replies)|answer (?:me )?(?:aloud|out loud)|use your voice|"
+        r"read (?:your )?answers (?:aloud|out loud)|dey talk to me|talk to me with your voice|"
+        r"b[aá] mi s[oọ]̀?r[oọ]̀?|yi min magana|gwa m okwu)", re.I)),
+    ("voice_off", re.compile(
+        r"(?:just text|text only|only text|stop talking|don'?t talk|do not talk|stop speaking|be quiet|"
+        r"reply (?:in|with) text|mute (?:yourself|your voice)|no dey talk(?: again)?|no talk again|"
+        r"d[aá]k[eẹ]́?|yi shiru|gbachi nk[iị]t[iị])", re.I)),
     ("greet", re.compile(
         r"(?:hello|hi|hey|hey there|wassup|whats? ?up|what'?s up|sup|how far|how body|how you dey|good (?:morning|"
         r"afternoon|evening)|how are you|how are you doing|b[aá]wo ni|bawo|e k[uú] (?:[aà]ar[oọ]|ir[oọ]l[eẹ]|"
@@ -70,6 +89,8 @@ def parse(text: str) -> dict[str, Any] | None:
         if pattern.fullmatch(rest):
             if action == "move":
                 return {"action": "move", "where": _where(rest)}
+            if action.startswith("voice_"):
+                return {"action": "voice", "value": action.removeprefix("voice_")}
             return {"action": action}
     return None
 
@@ -81,6 +102,10 @@ def clean(raw: Any) -> dict[str, Any] | None:
     out: dict[str, Any] = {"action": raw["action"]}
     if raw["action"] == "move":
         out["where"] = raw.get("where") if raw.get("where") in PLACES else "away"
+    if raw["action"] == "voice":
+        if raw.get("value") not in ("on", "off"):
+            return None
+        out["value"] = raw["value"]
     return out
 
 
@@ -92,5 +117,9 @@ def reply(control: dict[str, Any], language: str) -> str:
         return "Okay, I'll stay until you say."
     if action == "go":
         return "Bye for now."
+    if action == "settings":
+        return "Opening my settings."
+    if action == "voice":
+        return "Okay, I'll talk to you." if control.get("value") == "on" else "Okay, text only from now on."
     where = control.get("where", "away")
     return "Okay, moving out of your way." if where == "away" else f"Okay, moving to the {where.replace('-', ' ')}."

@@ -1433,6 +1433,101 @@ details.server[open] {
   }
 }
 
+/* --- the canvas looks: Swarm, Window runner, Lens ----------------------------------------- */
+
+.look-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.canvas-handle {
+  position: absolute;
+  background: transparent;
+}
+.canvas-handle.swarm {
+  border-radius: 8px;
+  border-top: 2px solid rgba(239, 159, 39, 0.35); /* the swarm's nest on the bottom edge */
+}
+.canvas-handle.lens {
+  border-radius: 50%;
+}
+.lens-note {
+  position: absolute;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* --- picking looks: one, or several taking turns --------------------------------------- */
+
+.modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.modes button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.modes button span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.modes button.on {
+  border-color: var(--mint);
+  box-shadow: 0 0 0 2px rgba(93, 202, 165, 0.3);
+}
+.tick-box {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  border-radius: 4px;
+  border: 2px solid var(--muted);
+  vertical-align: -2px;
+}
+.tick-box.on {
+  border-color: var(--mint);
+  background: var(--mint);
+  box-shadow: inset 0 0 0 2px #0e1513;
+}
+.look .turn {
+  margin-left: 8px;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--mint);
+}
+
+/* --- the last setup card ------------------------------------------------------------------ */
+
+.prompt.welcome {
+  justify-content: center;
+  padding: 28px 36px;
+}
+.welcome-text {
+  margin: 0;
+  font: 700 26px/1.35 var(--display);
+  color: var(--fg);
+}
+.welcome-text strong {
+  color: var(--mint);
+  letter-spacing: 0.02em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

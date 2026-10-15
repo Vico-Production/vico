@@ -170,6 +170,23 @@ class ToolCallPlan(StrictModel):
     tool: str = Field(min_length=1, max_length=60)
     arguments: dict[str, Any] = Field(default_factory=dict)
     explanation: str = Field(default="", max_length=500)
+    # This step completes the request: if it succeeds and is verified, Vico finishes with
+    # `message` instead of asking the planner again.
+    final: bool = False
+    message: str | None = Field(default=None, max_length=1000)
+
+
+class BatchCall(StrictModel):
+    tool: str = Field(min_length=1, max_length=60)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class BatchPlan(StrictModel):
+    """Two to four looking-up steps (list, find) run together; never anything that needs approval."""
+
+    kind: Literal["batch"]
+    calls: list[BatchCall] = Field(min_length=2, max_length=4)
+    explanation: str = Field(default="", max_length=500)
 
 
 class ClarifyPlan(StrictModel):
@@ -191,18 +208,32 @@ class ControlPlan(StrictModel):
     """The request is about Vico itself (stay, go, move, greeting), not a task."""
 
     kind: Literal["control"]
-    action: Literal["stay", "go", "move", "greet"]
+    action: Literal["stay", "go", "move", "greet", "settings", "voice"]
     where: str | None = Field(default=None, max_length=20)
+    value: Literal["on", "off"] | None = None
 
 
-Plan = ToolCallPlan | ClarifyPlan | UnsupportedPlan | DonePlan | ControlPlan
+Plan = ToolCallPlan | ClarifyPlan | UnsupportedPlan | DonePlan | ControlPlan | BatchPlan
 _PLAN_TYPES: dict[str, type[StrictModel]] = {
     "tool_call": ToolCallPlan,
     "clarify": ClarifyPlan,
     "unsupported": UnsupportedPlan,
     "done": DonePlan,
     "control": ControlPlan,
+    "batch": BatchPlan,
 }
+
+
+# Keys the planner adds on its first reply (it reads the request directly, so no separate
+# language call is needed). They are taken off before the strict plan check.
+PLAN_META_KEYS = ("language", "restored")
+
+
+def split_meta(raw: Any) -> tuple[Any, dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return raw, {}
+    meta = {k: raw[k] for k in PLAN_META_KEYS if k in raw}
+    return {k: v for k, v in raw.items() if k not in PLAN_META_KEYS}, meta
 
 
 def parse_plan(raw: Any) -> Plan:

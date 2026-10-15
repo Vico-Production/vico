@@ -107,18 +107,19 @@ function Approval({ session, send }: { session: Session; send: (i: Intent) => vo
   );
 }
 
-/** First run (pick a look, then an access code) and the small settings panel. */
+/** First run (pick a look or several to take turns, then an access code) and the settings panel,
+ *  which opens only when the user asks Vico for its settings. */
 function Setup({ session, send }: { session: Session; send: (i: Intent) => void }) {
   const first = session.phase === "setup";
   const [step, setStep] = useState<"look" | "codes">(first ? "look" : "codes");
-  const [look, setLook] = useState<Look | null>(first ? null : session.look);
+  const [looks, setLooks] = useState<Look[]>(first ? [] : [session.look]);
+  const [rotate, setRotate] = useState(false);
   const [gemini, setGemini] = useState("");
   const [groq, setGroq] = useState("");
   const [approval, setApproval] = useState(true);
   const [wake, setWake] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
   const [serverToken, setServerToken] = useState("");
-  const [voice, setVoice] = useState(true);
   const [serverCheck, setServerCheck] = useState<string | null>(null);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -141,13 +142,27 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       .settings()
       .then((s) => {
         setApproval(s.require_approval);
-        if (!first && s.look) setLook(s.look);
+        if (!first) {
+          setRotate(Boolean(s.rotate));
+          setLooks(s.rotate && s.looks?.length ? s.looks : [s.look]);
+        }
         setWake(s.wake_word);
         setServerUrl(s.speech_server_url ?? "");
-        setVoice(s.voice_replies);
       })
       .catch(() => undefined);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** "One look" keeps a single pick; "Take turns" keeps every ticked look. */
+  const chooseMode = (next: boolean) => {
+    setRotate(next);
+    setError(null);
+    if (!next && looks.length > 1) setLooks(looks.slice(0, 1));
+  };
+  const lookProblem = (): string | null => {
+    if (rotate && looks.length < 2) return "Tick at least two looks to take turns, or choose One look.";
+    if (!looks.length) return "Pick how I should appear.";
+    return null;
+  };
 
   const checkServer = async () => {
     setServerCheck("Checking…");
@@ -162,6 +177,8 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
   };
 
   const save = async () => {
+    const problem = lookProblem();
+    if (problem) return setError(problem);
     setSaving(true);
     setError(null);
     try {
@@ -170,16 +187,18 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       const keys = await api.secrets();
       if (!keys.gemini && !keys.groq) throw new Error("Paste your Gemini access code to continue.");
       if (serverToken.trim()) await api.saveSecret("speech_server", serverToken.trim());
-      const chosen = look ?? "peek";
+      const current = looks[0];
       await api.updateSettings({
-        look: chosen,
+        look: current,
+        looks,
+        rotate: rotate && looks.length > 1,
         cloud_consent: true,
         onboarding_complete: true,
         require_approval: approval,
         wake_word: wake,
-        ...(first ? {} : { speech_server_url: serverUrl.trim() || null, voice_replies: voice }),
+        ...(first ? {} : { speech_server_url: serverUrl.trim() || null }),
       });
-      send({ type: "configured", look: chosen });
+      send({ type: "configured", look: current, first });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -187,13 +206,29 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
     }
   };
 
+  const modes = (
+    <div className="modes" role="radiogroup" aria-label="One look or take turns">
+      <button type="button" role="radio" aria-checked={!rotate} className={!rotate ? "on" : ""}
+        onClick={() => chooseMode(false)} data-testid="mode-one">
+        <strong>One look</strong>
+        <span>The same one every time</span>
+      </button>
+      <button type="button" role="radio" aria-checked={rotate} className={rotate ? "on" : ""}
+        onClick={() => chooseMode(true)} data-testid="mode-rotate">
+        <strong>Take turns</strong>
+        <span>Tick two or more; each time I come back I use the next one</span>
+      </button>
+    </div>
+  );
+
   if (step === "look") {
     return (
       <form
         className="setup"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!look) return setError("Pick how I should appear. You can change it later in Settings.");
+          const problem = lookProblem();
+          if (problem) return setError(problem);
           setError(null);
           setStep("codes");
         }}
@@ -201,7 +236,8 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       >
         <p className="eyebrow">Hello, I'm Vico</p>
         <p className="lead">How should I appear on your screen? Each one plays a whole task: listening, thinking, then working.</p>
-        <LookPicker value={look} onChange={(l) => { setLook(l); setError(null); }} />
+        {modes}
+        <LookPicker selected={looks} rotate={rotate} onChange={(l) => { setLooks(l); setError(null); }} />
         {error && <p className="error-line" role="alert">{error}</p>}
         <div className="choices">
           <button className="drop allow" type="submit" data-testid="look-continue">
@@ -230,7 +266,8 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       ) : (
         <>
           <p className="section">How I appear</p>
-          <LookPicker value={look} onChange={setLook} />
+          {modes}
+          <LookPicker selected={looks} rotate={rotate} onChange={(l) => { setLooks(l); setError(null); }} />
           <p className="section">Access codes</p>
         </>
       )}
@@ -269,14 +306,14 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       <label className="switch">
         <input type="checkbox" checked={wake} onChange={(e) => setWake(e.target.checked)} data-testid="wake-word" />
         <span className="track" aria-hidden="true" />
-        <span>Wake me when I say "Hey Vico" · heard only on this computer</span>
+        <span>Come when I say "Vico" · heard only on this computer</span>
       </label>
       {!first && (
         <details className="server">
           <summary>Your speech server · optional</summary>
           <p className="fine">
-            A free server you run yourself, with Meta Omnilingual ASR for Yorùbá, Hausa and Igbo speech and Nigerian
-            voices for spoken answers. Setup guide: services/speech_server/README.md.
+            A free server you run yourself, with Meta Omnilingual ASR for Yorùbá, Hausa and Igbo speech and YarnGPT
+            Nigerian voices (the only free way for me to speak Yorùbá). Setup guide: services/speech_server/README.md.
           </p>
           <label className="line-field quiet">
             <span>Address {configured.speech_server && <em>· token saved</em>}</span>
@@ -292,11 +329,6 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
               onChange={(e) => setServerToken(e.target.value)}
             />
           </label>
-          <label className="switch">
-            <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
-            <span className="track" aria-hidden="true" />
-            <span>Answer me aloud</span>
-          </label>
           <button type="button" className="link" onClick={() => void checkServer()} data-testid="test-server">
             test connection
           </button>
@@ -305,7 +337,8 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       )}
       <p className="fine">
         To understand you, your voice and requests go to Google Gemini (and Groq if you add it). Vico never pays,
-        never types passwords, and always asks before deleting or sending.
+        never types passwords, and always asks before deleting or sending. Say "Vico, talk to me" to hear my answers
+        aloud, or "Vico, just text" to stop.
       </p>
       {error && <p className="error-line" role="alert">{error}</p>}
       {!first && (configured.gemini || configured.groq) && (
@@ -323,10 +356,19 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
           <span>{first ? "Begin" : "Save"}</span> <Key>⏎</Key>
         </button>
       </div>
-      <Hints>
-        <Key>Win</Key> + <Key>Alt</Key> + <Key>V</Key> brings me back anytime · <Key>esc</Key> to close
-      </Hints>
     </form>
+  );
+}
+
+/** The last screen of setup: only this sentence, until the user presses a key or talks to Vico. */
+function Welcome() {
+  return (
+    <div className="prompt welcome" data-testid="welcome">
+      <p className="welcome-text">
+        If you want to come back to these settings, ask Vico to <strong>OPEN ITS SETTINGS</strong> — by voice or by
+        typing.
+      </p>
+    </div>
   );
 }
 
@@ -346,6 +388,18 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (phase === "welcome") {
+        // Enter or Esc closes the last setup card; typing starts talking to Vico.
+        if (e.key === "Enter" || e.key === "Escape") {
+          e.preventDefault();
+          send({ type: "escape" });
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          setValue(e.key);
+          send({ type: "type", text: e.key });
+        }
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         send(phase === "approval" ? { type: "reject" } : { type: "escape" });
@@ -362,6 +416,7 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, send]);
 
+  if (phase === "welcome") return <Welcome />;
   if (phase === "setup" || phase === "settings") {
     return (
       <div className="prompt setup-mode" data-testid="prompt">

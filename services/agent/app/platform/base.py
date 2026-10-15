@@ -52,10 +52,30 @@ class PlatformAdapter:
     def discover_apps(self) -> list[AppEntry]:
         return []
 
+    _apps: list[AppEntry] | None = None
+    _apps_at = 0.0
+    APPS_TTL_S = 300.0
+
+    def refresh_apps(self) -> list[AppEntry]:
+        """Scan the Start Menu (or .desktop files) once; find_apps reuses it."""
+        self._apps = self.discover_apps()
+        self._apps_at = time.monotonic()
+        return self._apps
+
+    def cached_apps(self) -> list[AppEntry]:
+        if self._apps is None:
+            return self.refresh_apps()
+        if time.monotonic() - self._apps_at > self.APPS_TTL_S:
+            import threading
+
+            self._apps_at = time.monotonic()  # one refresh at a time, in the background
+            threading.Thread(target=self.refresh_apps, daemon=True).start()
+        return self._apps
+
     def find_apps(self, query: str) -> list[AppEntry]:
         q = query.strip().lower()
         entries = [AppEntry(name, cmd[0]) for name, cmd in self.builtin_apps().items()]
-        entries += self.discover_apps()
+        entries += self.cached_apps()
         seen: set[str] = set()
         unique = []
         for e in entries:

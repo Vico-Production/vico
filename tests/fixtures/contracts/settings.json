@@ -19,10 +19,14 @@
     "max_steps": 12,
     "browser_channel": "auto",
     "speech_server_url": null,
-    "voice_replies": true,
+    "voice_replies": false,
     "wake_word": true,
     "look": "peek",
-    "spots": {}
+    "spots": {},
+    "looks": [
+      "peek"
+    ],
+    "rotate": false
   },
   "error": null
 }

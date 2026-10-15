@@ -12,6 +12,8 @@ from app.contracts import StrictModel
 from app.store.db import Database
 
 ProviderName = Literal["groq", "gemini", "none"]
+LookName = Literal["peek", "possession", "yoyo", "swarm", "runner", "lens"]
+SpotName = Literal["peek", "yoyo", "possession_label", "swarm", "runner", "lens"]
 
 
 class Settings(StrictModel):
@@ -36,15 +38,18 @@ class Settings(StrictModel):
     browser_channel: Literal["auto", "msedge", "chrome", "chromium"] = "auto"
     # The user's own Vico Speech Server (Omnilingual ASR + YarnGPT voices); token in the keyring.
     speech_server_url: str | None = None
-    # Speak answers aloud when a speech server with voices is set up.
-    voice_replies: bool = True
+    # Speak answers aloud (switched by voice: "Vico, talk to me" / "just text"). Text by default.
+    voice_replies: bool = False
     # Listen on this computer for "Hey Vico" (nothing heard while waiting leaves the computer).
     wake_word: bool = True
     # How Vico appears on screen; picked at first run and changeable in Settings.
-    look: Literal["peek", "possession", "yoyo"] = "peek"
-    # Where the user dragged or told each look to go: peek and yoyo are a fraction of the
-    # screen width; possession_label is 0 (top edge of the window) or 1 (bottom edge).
-    spots: dict[Literal["peek", "yoyo", "possession_label"], float] = Field(default_factory=dict)
+    look: LookName = "peek"
+    # The looks the user picked; with rotate on, each new summon uses the next one in turn.
+    looks: list[LookName] = Field(default_factory=lambda: list[LookName](["peek"]), min_length=1, max_length=6)
+    rotate: bool = False
+    # Where the user dragged or told each look to go: fractions of the screen width (or, for
+    # runner, of the window it stands on); possession_label is 0 (top edge) or 1 (bottom edge).
+    spots: dict[SpotName, float] = Field(default_factory=dict)
 
 
 class SettingsPatch(StrictModel):
@@ -65,8 +70,10 @@ class SettingsPatch(StrictModel):
     speech_server_url: str | None = Field(default=None, max_length=300)
     voice_replies: bool | None = None
     wake_word: bool | None = None
-    look: Literal["peek", "possession", "yoyo"] | None = None
-    spots: dict[Literal["peek", "yoyo", "possession_label"], float] | None = None
+    look: LookName | None = None
+    looks: list[LookName] | None = Field(default=None, min_length=1, max_length=6)
+    rotate: bool | None = None
+    spots: dict[SpotName, float] | None = None
 
 
 class SettingsRepository:

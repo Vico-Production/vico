@@ -1,8 +1,8 @@
 // Where Vico appears on screen for each look, in CSS pixels of the full-screen aura window.
 // The prompt window (the only part that takes the keyboard) is placed next to the look.
 
-export type Look = "peek" | "possession" | "yoyo";
-export const LOOKS: Look[] = ["peek", "possession", "yoyo"];
+export type Look = "peek" | "possession" | "yoyo" | "swarm" | "runner" | "lens";
+export const LOOKS: Look[] = ["peek", "possession", "yoyo", "swarm", "runner", "lens"];
 
 export interface Rect {
   x: number;
@@ -15,7 +15,7 @@ export interface Rect {
 export type Mood = "away" | "listen" | "think" | "work" | "ask" | "done" | "sad";
 
 /** Where the user put each look: fractions of the screen width; the label 0 = top, 1 = bottom. */
-export type SpotMap = Partial<Record<"peek" | "yoyo" | "possession_label", number>>;
+export type SpotMap = Partial<Record<"peek" | "yoyo" | "possession_label" | "swarm" | "runner" | "lens", number>>;
 
 export const PEEK_W = 100; // the peeking figure, drawn at the bottom edge
 export const PEEK_H = 82;
@@ -27,9 +27,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 /** Prompt window size for a phase. */
 export function promptSize(phase: string, screen: { width: number; height: number }) {
   if (phase === "setup" || phase === "settings") {
-    const tall = phase === "settings" ? 680 : 540;
+    const tall = 700; // six live previews and the mode switch fit without scrolling on a laptop
     return { width: Math.min(780, screen.width - 40), height: Math.min(tall, screen.height - 60) };
   }
+  if (phase === "welcome") return { width: Math.min(680, screen.width - 40), height: 240 };
   if (phase === "approval") return { width: 480, height: 210 };
   if (phase === "question") return { width: 460, height: 176 };
   if (phase === "typing") return { width: 460, height: 150 };
@@ -46,6 +47,12 @@ export function yoyoHome(screen: { width: number }, spots?: SpotMap): number {
   const fallback = screen.width - 110;
   const x = spots?.yoyo !== undefined ? spots.yoyo * screen.width : fallback;
   return clamp(x, ORB, screen.width - ORB / 2 - 8);
+}
+
+/** Swarm and Lens rest near the bottom edge, where the user left them (or the middle). */
+export function bottomHome(look: "swarm" | "lens", screen: { width: number; height: number }, spots?: SpotMap) {
+  const x = clamp((spots?.[look] ?? 0.5) * screen.width, 140, screen.width - 140);
+  return { x, y: screen.height - (look === "lens" ? 96 : 34) };
 }
 
 export function yoyoLength(mood: Mood): number {
@@ -71,7 +78,7 @@ export function promptFrame(
   spots?: SpotMap,
 ): Rect {
   const { width, height } = promptSize(phase, screen);
-  if (phase === "setup" || phase === "settings") {
+  if (phase === "setup" || phase === "settings" || phase === "welcome") {
     return { x: (screen.width - width) / 2, y: (screen.height - height) / 2, width, height };
   }
   let x: number;
@@ -79,6 +86,14 @@ export function promptFrame(
   if (look === "peek") {
     x = peekHome(screen, spots) - width / 2;
     y = screen.height - PEEK_H - GAP - height;
+  } else if (look === "swarm" || look === "lens") {
+    const home = bottomHome(look, screen, spots);
+    x = home.x - width / 2;
+    y = home.y - (look === "lens" ? 70 : 110) - GAP - height;
+  } else if (look === "runner") {
+    const t = usableTarget(target, screen);
+    x = t ? t.x + (t.width - width) / 2 : (screen.width - width) / 2;
+    y = t ? t.y + 46 : screen.height - 80 - height;
   } else if (look === "yoyo") {
     const anchor = yoyoHome(screen, spots);
     const leftSide = anchor > screen.width / 2;

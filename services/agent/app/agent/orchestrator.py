@@ -18,10 +18,20 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from app.agent import control, policy, stage
-from app.agent.language import guess_language
-from app.agent.offline_parser import OFFLINE_HELP, parse_offline
+from app.agent.language import guess_language, safe_restoration
+from app.agent.offline_parser import OFFLINE_HELP, parse_fast, parse_offline
 from app.agent.prompts import PLANNER_SYSTEM, planner_user_prompt
-from app.agent.schemas import ClarifyPlan, ControlPlan, DonePlan, Plan, ToolCallPlan, UnsupportedPlan, parse_plan
+from app.agent.schemas import (
+    BatchPlan,
+    ClarifyPlan,
+    ControlPlan,
+    DonePlan,
+    Plan,
+    ToolCallPlan,
+    UnsupportedPlan,
+    parse_plan,
+    split_meta,
+)
 from app.config import APPROVAL_TIMEOUT_S, MAX_CLARIFICATIONS, MAX_TEXT_INPUT_CHARS, TOOL_TIMEOUT_S, data_dir
 from app.contracts import TERMINAL_STATES, ErrorCode, Language, RunState, VicoError
 from app.platform.base import PlatformAdapter
@@ -30,8 +40,8 @@ from app.providers.registry import ProviderHub
 from app.security.paths import PathPolicy
 from app.security.redaction import redact_args, redact_text
 from app.store.history import HistoryRepository
-from app.store.settings import Settings, SettingsRepository
-from app.tools.base import ToolContext, ToolRegistry, ToolResult
+from app.store.settings import Settings, SettingsPatch, SettingsRepository
+from app.tools.base import Risk, ToolContext, ToolRegistry, ToolResult
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -118,10 +128,27 @@ class Run:
     decision: dict[str, Any] | None = None
     created: float = field(default_factory=time.monotonic)
     task: asyncio.Task | None = None
+    version: int = 0
+    changed: asyncio.Event = field(default_factory=asyncio.Event)
+
+    def touch(self) -> None:
+        """Something the desktop app shows has changed: wake anyone waiting for it."""
+        self.version += 1
+        self.changed.set()
+        self.changed = asyncio.Event()
 
     def set_state(self, state: RunState, note: str = "") -> None:
         self.state = state
         self.timeline.append({"state": state.value, "at": _now(), "note": note})
+        self.touch()
+
+    async def wait_change(self, after: int, timeout: float) -> None:
+        if self.version != after:
+            return
+        try:
+            await asyncio.wait_for(self.changed.wait(), timeout)
+        except TimeoutError:
+            pass
 
     @property
     def pending_step(self) -> Step | None:
@@ -138,7 +165,7 @@ class Run:
             "pending_step_id": pending.id if pending else None,
             "question": self.question, "message": self.message, "message_localized": self.message_localized,
             "error": self.error, "cooldown_until": self.cooldown_until, "control": self.control,
-            "timeline": self.timeline,
+            "timeline": self.timeline, "version": self.version,
         }
 
 
@@ -236,6 +263,11 @@ class Orchestrator:
                 return
             settings = self.settings_repo.load()
             ctx = self._context(settings, run)
+            fast = parse_fast(run.text)
+            if fast is not None:
+                run.mode = "local"
+                await self._single(run, ctx, fast)
+                return
             cloud = self.hub.has_role("llm") and await self.hub.online()
             if cloud:
                 await self._cloud(run, ctx, settings)
@@ -257,6 +289,8 @@ class Orchestrator:
     def _control(self, run: Run, asked: dict[str, Any], language: str) -> None:
         """A request about Vico itself: the desktop app acts on run.control; nothing runs."""
         run.control = asked
+        if asked["action"] == "voice":
+            self.settings_repo.update(SettingsPatch(voice_replies=asked.get("value") == "on"))
         if run.language == AUTO:
             run.language = language if language in {lang.value for lang in Language} else Language.EN.value
         run.canonical = run.canonical or run.text
@@ -316,6 +350,13 @@ class Orchestrator:
         if plan is None:
             self._fail(run, ErrorCode.OFFLINE, OFFLINE_HELP)
             return
+        await self._single(run, ctx, plan)
+
+    async def _single(self, run: Run, ctx: ToolContext, plan: ToolCallPlan) -> None:
+        """One step from the local parser, finished with the step's own result."""
+        run.canonical = run.text
+        if run.language == AUTO:
+            run.language = Language.EN.value
         step = await self._step(run, ctx, plan)
         if run.state in TERMINAL_STATES:
             return
@@ -328,24 +369,11 @@ class Orchestrator:
 
     # --- cloud ---------------------------------------------------------------------------
     async def _cloud(self, run: Run, ctx: ToolContext, settings: Settings) -> None:
-        if run.language == AUTO:
-            guess = guess_language(run.text)
-            if guess == Language.EN:
-                run.language, run.canonical = Language.EN.value, run.text
-            else:
-                understood = await self._cloud_call(run, lambda: self.hub.understand(run.text))
-                run.language, run.canonical = understood["language"], understood["english"]
-                run.original = understood.get("restored") or run.original
-                if understood.get("control"):
-                    self._control(run, understood["control"], run.language)
-                    return
-        elif run.language != Language.EN:
-            translated = await self._cloud_call(run, lambda: self.hub.translate(run.text, run.language, "en"))
-            run.canonical = translated["text"]
-        else:
-            run.canonical = run.text
-        ctx.language = run.language
-        run.timeline.append({"state": "understood", "at": _now(), "note": run.canonical})
+        run.canonical = run.text
+        if run.language == AUTO and guess_language(run.text) == Language.EN:
+            run.language = Language.EN.value
+        # Otherwise the first planner reply names the language (and restores tone marks), so a
+        # Yoruba, Hausa, Igbo or Pidgin request costs one AI call instead of two.
 
         failures = 0
         tool_steps = 0
@@ -355,13 +383,23 @@ class Orchestrator:
                 return
             run.set_state(RunState.PLANNING)
             plan = await self._plan(run, ctx)
+            ctx.language = run.language
             if isinstance(plan, DonePlan):
-                run.message = plan.message
-                await self._localize(run)
+                run.message = plan.message  # already in the user's language
                 run.set_state(RunState.COMPLETED, "Done")
                 return
+            if isinstance(plan, BatchPlan):
+                failed = await self._batch(run, ctx, plan)
+                if run.state in TERMINAL_STATES:
+                    return
+                tool_steps += len(plan.calls)
+                failures = failures + 1 if failed else 0
+                if failures >= MAX_FAILED_STEPS:
+                    self._fail(run, ErrorCode.INTERNAL, "Stopped after repeated failed steps.")
+                    return
+                continue
             if isinstance(plan, ControlPlan):
-                asked = control.clean(plan.model_dump())
+                asked = control.clean(plan.model_dump(exclude_none=True))
                 if asked and not run.steps:
                     self._control(run, asked, run.language)
                     return
@@ -390,6 +428,12 @@ class Orchestrator:
             if run.state in TERMINAL_STATES:
                 return
             tool_steps += 1
+            if plan.final and step.status == "succeeded":
+                # The planner said this step completes the request and it was verified: no extra
+                # round trip to be told so. A failure or an unverified result plans again.
+                run.message = plan.message or step.message
+                run.set_state(RunState.COMPLETED, "Done")
+                return
             if step.status in ("failed", "denied"):
                 failures += 1
                 if failures >= MAX_FAILED_STEPS:
@@ -413,10 +457,60 @@ class Orchestrator:
                 prompt + f"\n\nYour previous reply was rejected: {last_error}. Reply with valid JSON only.")
             completion = await self._cloud_call(run, functools.partial(self.hub.complete, PLANNER_SYSTEM, text, json_mode=True))
             try:
-                return parse_plan(parse_json_text(completion.text))
+                raw, meta = split_meta(parse_json_text(completion.text))
+                plan = parse_plan(raw)
             except (ValueError, VicoError) as exc:
                 last_error = str(exc)[:300]
+                continue
+            self._learn_language(run, meta)
+            return plan
         raise VicoError(ErrorCode.INVALID_PLAN, "The AI did not return a valid plan, so nothing was run.")
+
+    def _learn_language(self, run: Run, meta: dict[str, Any]) -> None:
+        if run.language != AUTO:
+            return
+        named = str(meta.get("language", "")).strip().lower()
+        run.language = named if named in {lang.value for lang in Language} else Language.EN.value
+        restored = meta.get("restored")
+        if isinstance(restored, str):
+            run.original = safe_restoration(run.text, restored) or run.original
+        run.timeline.append({"state": "understood", "at": _now(), "note": run.language})
+
+    async def _batch(self, run: Run, ctx: ToolContext, plan: BatchPlan) -> bool:
+        """Several reading steps at once. Anything that is not a plain read (no approval needed)
+        is refused, so approval and confirmation steps always stay one at a time."""
+        checks = []
+        for call in plan.calls:
+            pf = await self._until(run, policy.preflight(self.registry, ctx, call.tool, call.arguments))
+            checks.append((call, pf))
+        if any(pf.decision.outcome is not policy.Outcome.ALLOWED or pf.spec is None or
+               pf.spec.risk is not Risk.AUTO for _, pf in checks):
+            step = Step(id=uuid.uuid4().hex[:8], tool="batch", arguments={}, explanation=plan.explanation,
+                        status="denied", message="Only reading steps can run together.",
+                        observation="Batch refused: only reading tools (list, read, find) can be batched. "
+                                    "Propose one step at a time.")
+            run.steps.append(step)
+            return True
+        steps = []
+        for call, pf in checks:
+            d = pf.decision
+            step = Step(id=uuid.uuid4().hex[:8], tool=call.tool, arguments=call.arguments,
+                        explanation=plan.explanation, effect=d.effect, targets=d.targets, outcome=d.outcome.value,
+                        reason=d.reason, approval="auto", status="running")
+            run.steps.append(step)
+            steps.append((step, pf))
+        run.set_state(RunState.EXECUTING, "batch")
+        results = await asyncio.gather(*(self._execute(run, ctx, pf, step) for step, pf in steps))
+        run.set_state(RunState.VERIFYING, "batch")
+        failed = False
+        for (step, _), result in zip(steps, results, strict=True):
+            step.message, step.verification, step.verified = result.message, result.verification, result.verified
+            step.data, step.observation = result.data, result.observation or result.message
+            step.status = "failed" if not result.ok else ("succeeded" if result.verified else "unverified")
+            failed = failed or not result.ok
+            self._record(run, step)
+        run.touch()
+        return failed
 
     async def _localize(self, run: Run) -> None:
         if run.language == Language.EN or not run.message:
@@ -469,7 +563,7 @@ class Orchestrator:
         run.set_state(RunState.EXECUTING, step.tool)
         step.status = "running"
         # Found alongside the step, never before it, so the avatar never slows the task down.
-        locating = asyncio.create_task(self._locate(ctx, step, pf.args))
+        locating = asyncio.create_task(self._locate(run, ctx, step, pf.args))
         result = await self._execute(run, ctx, pf, step)
         if not locating.done():
             locating.cancel()
@@ -483,11 +577,12 @@ class Orchestrator:
         self._record(run, step)
         return step
 
-    async def _locate(self, ctx: ToolContext, step: Step, args: Any) -> None:
+    async def _locate(self, run: Run, ctx: ToolContext, step: Step, args: Any) -> None:
         try:
             step.stage = await asyncio.wait_for(stage.locate(ctx, step.tool, args), 2.0)
         except Exception:  # noqa: S110 - an unknown position just means no stage
             step.stage = None
+        run.touch()
 
     async def _execute(self, run: Run, ctx: ToolContext, pf: policy.Preflight, step: Step) -> ToolResult:
         assert pf.spec is not None and pf.args is not None

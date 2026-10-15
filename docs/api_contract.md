@@ -34,16 +34,20 @@ Language tags: `en`, `yo`, `ha`, `ig`, `pcm` (experimental).
 | POST | `/agent/runs` | `{text, language?}` | `Run` (409 if another task is active). Omit `language` to detect it |
 | GET | `/agent/runs/current` | | the most recent `Run`, or null |
 | GET | `/agent/runs/{id}` | | `Run` |
+| GET | `/agent/runs/{id}/wait?after=N&timeout=15` | | `Run`, as soon as its `version` is no longer `N` (or after `timeout` s): the desktop app follows runs this way instead of polling |
+| POST | `/warm` | | `{warming}`; Vico was summoned or woken: checks the connection, opens the AI connection, refreshes the app list |
 | POST | `/agent/runs/{id}/decision` | `{step_id, approved, confirm}` | `Run`; `confirm: true` required for `confirm_required` steps |
 | POST | `/agent/runs/{id}/reply` | `{answer}` | `Run` (answers a clarification) |
 | POST | `/agent/runs/{id}/cancel` | | `Run` |
 | GET | `/agent/tools` | | tool names, categories, risk levels |
-| POST | `/audio/start` | `{language?}` | recorder status (omit `language` to detect it) |
-| GET | `/audio/status` | | `{recording, elapsed_s, max_s, level, full, silent, device}`; `silent` = every microphone gives digital silence |
+| POST | `/audio/start` | `{language?, auto_stop?}` | recorder status (omit `language` to detect it). With `auto_stop` the engine ends the recording when the user has finished speaking and transcribes at once |
+| POST | `/audio/auto-stop` | | end-of-speech detection for a recording already running (started by the wake word) |
+| GET | `/audio/status` | | `{recording, elapsed_s, max_s, level, full, silent, device}`; `silent` = every microphone gives digital silence. With `auto_stop` also `{stage: recording\|transcribing\|ready, heard, result?, error?}` |
 | POST | `/audio/stop` | `{transcribe}` | `{seconds, transcript}`; audio is discarded afterwards |
 | POST | `/audio/cancel` | | stops and discards |
 | GET | `/audio/wake` | | `{enabled, state, error, woke}`; `woke` is true once per "Hey Vico" (recording already started) |
-| POST | `/voice/speak` | `{text, language}` | `{audio_b64, mime, model, latency_ms}` from the user's speech server (YarnGPT); played from memory |
+| POST | `/voice/speak` | `{text, language}` | `{audio_b64, mime, provider, model, spoken, latency_ms}` when voice replies are on: Gemini 3.8 TTS for English, Hausa, Igbo and Pidgin (English voice); YarnGPT on the user's speech server for Yorùbá; the computer's own voice for English offline. `spoken` is the part read aloud (long answers: the first sentences). Played from memory |
+| POST | `/system/microphone-settings` | | opens Windows' microphone privacy page (only opens it) |
 | GET | `/speech-server/health` | | which engines the user's speech server has ready |
 | GET / DELETE | `/history` | | entries / `{deleted}` |
 | POST | `/browser/close` | | closes Vico's browser window |
@@ -76,3 +80,19 @@ Anything else is rejected; one retry is allowed, then the run fails with `invali
 | System | `run_command` |
 
 Risk levels: `auto` (metadata reads), `standard` (asks when approval is on), `confirm` (always asks: `delete_path`, `run_command`, `summarize_document`). Sends/posts/submissions are raised to confirm unless the user allows them. Payments and password/card entry are denied.
+
+
+## Run fields added for the avatar and speed
+
+- `version`: increases on every change the desktop app shows; see `/agent/runs/{id}/wait`.
+- `mode`: `cloud`, `offline`, or `local` (an exact simple command such as "open notepad" ran without the AI).
+- `control`: set when the request was about Vico itself, never a task: `{action: stay|go|move|greet|settings|voice,
+  where?, value?: on|off}`. `settings` opens Vico's settings (the only way back into them); `voice` switches spoken
+  replies and is saved as `settings.voice_replies`.
+- `steps[].stage`: where the step happens on screen (`{rect: {x, y, width, height}, kind}` in physical pixels) or
+  null; found alongside the step, never before it.
+
+## Settings fields
+
+`look` (current look), `looks` (the picked looks), `rotate` (take turns: each new summon uses the next one),
+`spots` (where each look was dragged or sent), `voice_replies` (off by default), `wake_word` (on by default).

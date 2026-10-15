@@ -100,12 +100,19 @@ export const api = {
   startRun: (text: string, language?: Language) => call<Run>("POST", "/agent/runs", { text, language: language ?? null }),
   currentRun: () => call<Run | null>("GET", "/agent/runs/current"),
   getRun: (id: string) => call<Run>("GET", `/agent/runs/${id}`),
+  /** Returns as soon as the run changes after `version` (or after a while): no polling. */
+  waitRun: (id: string, version: number) => call<Run>("GET", `/agent/runs/${id}/wait?after=${version}&timeout=15`),
+  /** Vico was summoned or woken: open the AI connection and refresh the app list now. */
+  warm: () => call<{ warming: boolean }>("POST", "/warm"),
   decide: (id: string, stepId: string, approved: boolean, confirm = false) =>
     call<Run>("POST", `/agent/runs/${id}/decision`, { step_id: stepId, approved, confirm }),
   reply: (id: string, answer: string) => call<Run>("POST", `/agent/runs/${id}/reply`, { answer }),
   cancel: (id: string) => call<Run>("POST", `/agent/runs/${id}/cancel`),
 
-  startRecording: (language?: Language) => call<AudioStatus>("POST", "/audio/start", { language: language ?? null }),
+  startRecording: (language?: Language, autoStop = true) =>
+    call<AudioStatus>("POST", "/audio/start", { language: language ?? null, auto_stop: autoStop }),
+  /** End-of-speech detection in the engine for a recording "Vico" already started. */
+  autoStop: () => call<AudioStatus>("POST", "/audio/auto-stop"),
   recordingStatus: () => call<AudioStatus>("GET", "/audio/status"),
   wake: () => call<{ enabled: boolean; state: string; error: string | null; woke: boolean }>("GET", "/audio/wake"),
   stopRecording: (transcribe = true) =>

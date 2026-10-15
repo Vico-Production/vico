@@ -151,7 +151,7 @@ async def test_prompt_injection_cannot_skip_confirmation(make, roots):
 
 async def test_policy_denial_stops_run(make):
     s = make(planner([call("create_folder", path="../../../../outside")]))
-    run = s.orchestrator.start("make folder outside", "en")
+    run = s.orchestrator.start("please put a folder outside the allowed area", "en")
     await wait_for(run, RunState.FAILED)
     assert run.error["code"] == "policy_denied" and run.steps[0].status == "denied"
 
@@ -187,14 +187,14 @@ async def test_clarification_flow(make, roots):
 
 async def test_yoruba_request_is_normalized_and_answer_localized(make, roots):
     _, ws = roots
-    provider = planner([call("create_folder", path="Ìpàdé"), {"kind": "done", "message": "Created Ìpàdé."}],
-                       translations={"Ṣẹ̀dá fóldà Ìpàdé": "Create folder Ìpàdé", "Created Ìpàdé.": "Mo ti ṣẹ̀dá Ìpàdé."})
+    # The planner reads the Yoruba request directly and answers in Yoruba: no translation calls.
+    provider = planner([call("create_folder", path="Ìpàdé"), {"kind": "done", "message": "Mo ti ṣẹ̀dá Ìpàdé."}])
     s = make(provider, require_approval=False)
     run = s.orchestrator.start("Ṣẹ̀dá fóldà Ìpàdé", "yo")
     await wait_for(run, RunState.COMPLETED)
-    assert run.canonical == "Create folder Ìpàdé"
-    assert run.message_localized == "Mo ti ṣẹ̀dá Ìpàdé."
+    assert run.message == "Mo ti ṣẹ̀dá Ìpàdé."
     assert (ws / "Ìpàdé").is_dir()
+    assert all(system.startswith("You are the planning") for system, _ in provider.calls)
 
 
 async def test_max_steps_limit(make):
@@ -209,7 +209,7 @@ async def test_offline_typed_commands(make, roots):
     s = make(None, online=False)
     run = s.orchestrator.start("create folder Demo", "en")
     await wait_for(run, RunState.AWAITING_APPROVAL)
-    assert run.mode == "offline"
+    assert run.mode == "local"  # an exact simple command runs on the computer
     s.orchestrator.decide(run.id, run.pending_step.id, approved=True)
     await wait_for(run, RunState.COMPLETED)
     assert (ws / "Demo").is_dir()
@@ -241,14 +241,16 @@ async def test_daily_limit_stops_with_a_clear_message(make):
 
 async def test_language_is_detected_when_not_given(make, roots):
     _, ws = roots
-    provider = planner([call("create_folder", path="Ìpàdé"), {"kind": "done", "message": "Created Ìpàdé."}],
-                       translations={"Ṣẹ̀dá fóldà Ìpàdé": "Create folder Ìpàdé", "Created Ìpàdé.": "Mo ti ṣẹ̀dá Ìpàdé."})
+    # One AI call per step: the first planner reply names the language and restores tone marks.
+    first = {**call("create_folder", path="Ìpàdé"), "language": "yo", "restored": "Ṣẹ̀dá fóldà Ìpàdé"}
+    provider = planner([first, {"kind": "done", "message": "Mo ti ṣẹ̀dá Ìpàdé."}])
     s = make(provider, require_approval=False)
-    run = s.orchestrator.start("Ṣẹ̀dá fóldà Ìpàdé")
+    run = s.orchestrator.start("Seda folda Ipade")
     await wait_for(run, RunState.COMPLETED)
-    assert run.language == "yo" and run.canonical == "Create folder Ìpàdé"
-    assert run.message_localized == "Mo ti ṣẹ̀dá Ìpàdé."
+    assert run.language == "yo" and run.original == "Ṣẹ̀dá fóldà Ìpàdé"
+    assert run.message == "Mo ti ṣẹ̀dá Ìpàdé."
     assert (ws / "Ìpàdé").is_dir()
+    assert len(provider.calls) == 2 and not any(system.startswith("The user gave") for system, _ in provider.calls)
 
 
 async def test_plain_english_skips_the_detection_call(make):
@@ -281,12 +283,10 @@ async def test_greeting_vico_is_answered_on_the_computer(make):
     assert run.message.startswith("How far!") and not run.steps and asked == []
 
 
-async def test_stay_request_in_another_language_comes_from_understand(make):
+async def test_stay_request_in_another_language_comes_from_the_planner(make):
     def respond(system, user):
-        if system.startswith("The user gave"):
-            return {"language": "yo", "english": "Don't leave yet, I still need you",
-                    "control": {"action": "stay"}}
-        raise AssertionError("the planner must not see a request about Vico itself")
+        assert system.startswith("You are the planning")
+        return {"kind": "control", "action": "stay", "language": "yo"}
 
     s = make(MockProvider(responder=respond))
     run = s.orchestrator.start("Má lọ, mo ṣì nílò rẹ")
@@ -299,3 +299,62 @@ async def test_planner_can_say_a_request_is_about_vico(make):
     run = s.orchestrator.start("could you sit up in the top left part of my screen from now on", "en")
     await wait_for(run, RunState.COMPLETED)
     assert run.control == {"action": "move", "where": "top-left"} and not run.steps
+
+
+async def test_a_final_step_finishes_without_another_planner_call(make, roots):
+    _, ws = roots
+    provider = planner([{**call("create_folder", path="Quick"), "final": True, "message": "Made Quick."}])
+    s = make(provider, require_approval=False)
+    run = s.orchestrator.start("please make me a new folder named Quick right now", "en")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.message == "Made Quick." and (ws / "Quick").is_dir() and len(provider.calls) == 1
+
+
+async def test_an_exact_simple_command_skips_the_planner(make, roots):
+    _, ws = roots
+    provider = planner([])
+    s = make(provider, require_approval=False)
+    run = s.orchestrator.start("create folder Fast")
+    await wait_for(run, RunState.COMPLETED)
+    assert (ws / "Fast").is_dir() and provider.calls == [] and run.mode == "local"
+
+
+async def test_reads_can_run_together_but_nothing_else(make, roots):
+    _, ws = roots
+    (ws / "a.txt").write_text("alpha", encoding="utf-8")
+    (ws / "b.txt").write_text("beta", encoding="utf-8")
+    batch = {"kind": "batch", "explanation": "look around", "calls": [
+        {"tool": "list_folder", "arguments": {"path": "."}}, {"tool": "find_files", "arguments": {"query": "b"}}]}
+    provider = planner([batch, {"kind": "done", "message": "Found them."}])
+    s = make(provider)  # approval on: looking things up still needs none
+    run = s.orchestrator.start("what is in my workspace and where is b", "en")
+    await wait_for(run, RunState.COMPLETED)
+    assert [st.tool for st in run.steps] == ["list_folder", "find_files"]
+    assert all(st.status == "succeeded" for st in run.steps)
+
+    risky = {"kind": "batch", "explanation": "x", "calls": [
+        {"tool": "list_folder", "arguments": {"path": "."}}, {"tool": "read_text", "arguments": {"path": "a.txt"}},
+        {"tool": "delete_path", "arguments": {"path": "a.txt"}}]}
+    s2 = make(planner([risky, {"kind": "done", "message": "Stopped."}]))
+    run = s2.orchestrator.start("tidy up the workspace and delete a.txt please", "en")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.steps[0].tool == "batch" and run.steps[0].status == "denied"
+    assert (ws / "a.txt").exists()  # nothing that changes anything ran in a batch
+
+
+async def test_voice_switch_is_saved(make):
+    s = make(planner([]))
+    run = s.orchestrator.start("Vico, talk to me")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.control == {"action": "voice", "value": "on"} and s.settings.load().voice_replies is True
+    run = s.orchestrator.start("no dey talk again")
+    await wait_for(run, RunState.COMPLETED)
+    assert s.settings.load().voice_replies is False
+
+
+async def test_run_changes_wake_waiters(make):
+    s = make(planner([{"kind": "done", "message": "ok"}]))
+    run = s.orchestrator.start("say something nice about my day please", "en")
+    before = run.version
+    await asyncio.wait_for(run.wait_change(before, 5), 6)
+    assert run.version > before

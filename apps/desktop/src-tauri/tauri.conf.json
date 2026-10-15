@@ -72,7 +72,8 @@
           "libportaudio2",
           "xdotool",
           "wmctrl",
-          "gstreamer1.0-plugins-good"
+          "gstreamer1.0-plugins-good",
+          "espeak-ng"
         ]
       },
       "rpm": {
@@ -80,7 +81,8 @@
           "portaudio",
           "xdotool",
           "wmctrl",
-          "gstreamer1-plugins-good"
+          "gstreamer1-plugins-good",
+          "espeak-ng"
         ]
       }
     }

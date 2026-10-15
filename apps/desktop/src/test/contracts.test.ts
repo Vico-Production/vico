@@ -8,7 +8,7 @@ const load = (name: string) => JSON.parse(readFileSync(join(DIR, name), "utf-8")
 // Record<keyof T, true> fails to compile if a key is added to or removed from the type.
 const RUN_KEYS: Record<keyof Run, true> = {
   id: true, state: true, mode: true, language: true, text: true, original: true, canonical: true, steps: true,
-  pending_step_id: true, question: true, message: true, message_localized: true, error: true, cooldown_until: true, control: true,
+  pending_step_id: true, question: true, message: true, message_localized: true, error: true, cooldown_until: true, control: true, version: true,
   timeline: true,
 };
 const STEP_KEYS: Record<keyof Step, true> = {
@@ -19,7 +19,7 @@ const SETTINGS_KEYS: Record<keyof Settings, true> = {
   onboarding_complete: true, cloud_consent: true,
   require_approval: true, allow_send_without_approval: true, workspace: true, allowed_roots: true, stt_provider: true,
   llm_provider: true, fallback_consent: true, stt_model: true, llm_model: true, daily_request_budget: true,
-  max_steps: true, browser_channel: true, speech_server_url: true, voice_replies: true, wake_word: true, look: true, spots: true,
+  max_steps: true, browser_channel: true, speech_server_url: true, voice_replies: true, wake_word: true, look: true, looks: true, rotate: true, spots: true,
 };
 const HEALTH_KEYS: Record<keyof Health, true> = {
   version: true, platform: true, adapter: true, online: true, cloud_ready: true, speech_ready: true, voice_ready: true,

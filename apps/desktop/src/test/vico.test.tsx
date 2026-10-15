@@ -22,6 +22,8 @@ const settings: Settings = {
   voice_replies: true,
   wake_word: true,
   look: "peek",
+  looks: ["peek"],
+  rotate: false,
   spots: {},
 };
 
@@ -44,7 +46,7 @@ function step(over: Partial<Step> = {}): Step {
 function run(over: Partial<Run> = {}): Run {
   return { id: "r1", state: "awaiting_approval", mode: "cloud", language: "en", text: "open notepad",
     original: "open notepad", canonical: "open notepad", steps: [step()], pending_step_id: "s1", question: null,
-    message: null, message_localized: null, error: null, cooldown_until: null, control: null, timeline: [], ...over };
+    message: null, message_localized: null, error: null, cooldown_until: null, control: null, timeline: [], version: 0, ...over };
 }
 
 type Call = { method: string; path: string; body?: unknown };
@@ -137,9 +139,65 @@ describe("Vico", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/settings")).toBe(true));
     expect(calls.find((c) => c.path === "/secrets/gemini")?.body).toEqual({ api_key: "AIzaTestKey12345" });
     expect(calls.find((c) => c.method === "PUT" && c.path === "/settings")?.body).toMatchObject({
-      cloud_consent: true, onboarding_complete: true, look: "yoyo",
+      cloud_consent: true, onboarding_complete: true, look: "yoyo", looks: ["yoyo"], rotate: false,
     });
-    expect(await screen.findByTestId("result")).toHaveTextContent("all set");
+    // The last card says only how to come back to settings, and stays until a key.
+    const card = await screen.findByTestId("welcome");
+    expect(card.textContent).toBe(
+      "If you want to come back to these settings, ask Vico to OPEN ITS SETTINGS — by voice or by typing.");
+    expect(card.querySelector("strong")?.textContent).toBe("OPEN ITS SETTINGS");
+    expect(card.querySelectorAll("button, a, svg")).toHaveLength(0);
+    fireEvent.keyDown(window, { key: "Enter" });
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-hidden"), { timeout: 3000 });
+  });
+
+  it("takes turns between ticked looks, one per summon", async () => {
+    let current = "peek";
+    const calls = serve((c) =>
+      base(c, (call) => {
+        if (call.path === "/settings" && call.method === "GET") {
+          return { ...settings, look: current, looks: ["peek", "swarm", "lens"], rotate: true };
+        }
+        if (call.path === "/settings" && call.method === "PUT") {
+          current = (call.body as { look?: string }).look ?? current;
+          return { ...settings, look: current, looks: ["peek", "swarm", "lens"], rotate: true };
+        }
+        return undefined;
+      }),
+    );
+    render(<Stage />);
+    fireEvent.click(await screen.findByTestId("summon"));
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("look-swarm"));
+    expect(calls.find((c) => c.method === "PUT" && c.path === "/settings")?.body).toEqual({ look: "swarm" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-hidden"), { timeout: 3000 });
+    fireEvent.click(await screen.findByTestId("summon"));
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("look-lens"));
+  });
+
+  it("rotation needs two or more looks", async () => {
+    serve((c) => base(c, (call) => (call.path === "/settings" && call.method === "GET"
+      ? { ...settings, onboarding_complete: false } : undefined)));
+    render(<Stage />);
+    fireEvent.click(await screen.findByTestId("mode-rotate"));
+    fireEvent.click(screen.getByTestId("look-runner"));
+    fireEvent.click(screen.getByTestId("look-continue"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("at least two");
+    fireEvent.click(screen.getByTestId("look-lens"));
+    expect(screen.getByTestId("look-runner")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("look-lens")).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByTestId("look-continue"));
+    expect(await screen.findByTestId("gemini-code")).toBeInTheDocument();
+  });
+
+  it("opens its settings only when asked", async () => {
+    const asked = run({ state: "completed", steps: [], pending_step_id: null, message: "Opening my settings.",
+      control: { action: "settings" } });
+    serve((c) => base(c, (call) => (call.path.startsWith("/agent/runs") ? asked : undefined)));
+    render(<Stage />);
+    expect(screen.queryByText(/settings and access codes/i)).toBeNull();
+    await summonAndType("open your settings");
+    expect(await screen.findByTestId("setup")).toHaveTextContent("Settings");
   });
 
   it("Possession lights up the window being used and narrates on its edge", async () => {

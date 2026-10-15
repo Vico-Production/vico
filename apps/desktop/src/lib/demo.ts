@@ -22,7 +22,7 @@ export function demoTransport() {
     allow_send_without_approval: false, workspace: "~/Documents/VicoDemo", allowed_roots: ["~"],
     stt_provider: "gemini", llm_provider: "gemini", fallback_consent: true, stt_model: null, llm_model: null,
     daily_request_budget: 500, max_steps: 12, browser_channel: "auto", speech_server_url: null, voice_replies: true, wake_word: false,
-    look: "peek" as string, spots: {} };
+    look: "peek" as string, looks: ["peek"] as string[], rotate: false, spots: {} };
   // ?first=1 starts at first-run setup; ?look=possession|yoyo|peek picks a look.
   const params = new URLSearchParams(window.location.search);
   if (params.has("first")) settings.onboarding_complete = false;
@@ -33,7 +33,7 @@ export function demoTransport() {
     const t = (Date.now() - started) / 1000;
     const base: Run = { id: "demo", state: "normalizing", mode: "cloud", language: "en", text, original: text,
       canonical: text, steps: [], pending_step_id: null, question: null, message: null, message_localized: null,
-      error: null, cooldown_until: null, control: null, timeline: [] };
+      error: null, cooldown_until: null, control: null, timeline: [], version: 0 };
     // Where the stand-in browser window's address bar is (the preview desktop's right window).
     const bar = { rect: { x: Math.round(window.innerWidth * 0.5), y: Math.round(window.innerHeight * 0.12),
       width: Math.round(window.innerWidth * 0.42), height: 40 }, kind: "toolbar" };

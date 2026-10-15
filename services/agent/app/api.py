@@ -7,8 +7,10 @@ import hmac
 import logging
 import os
 import sys
+import threading
+import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -18,6 +20,7 @@ from pydantic import Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.agent.orchestrator import Orchestrator
+from app.audio.endpoint import Endpointer
 from app.audio.recorder import Recorder
 from app.audio.wake import WakeWord
 from app.config import MAX_TEXT_INPUT_CHARS, VERSION, data_dir
@@ -67,6 +70,8 @@ class SpeakRequest(StrictModel):
 
 class AudioStartRequest(StrictModel):
     language: Language | None = None  # None: detect from the speech
+    # The engine decides when the user has finished speaking and starts transcribing at once.
+    auto_stop: bool = False
 
 
 class AudioStopRequest(StrictModel):
@@ -85,6 +90,7 @@ class Services:
     browser: BrowserController | None
     platform: PlatformAdapter
     wake: WakeWord | None = None
+    listening: dict[str, Any] = field(default_factory=dict)  # the engine-side end-of-speech job
 
 
 def build_services(*, secrets: SecretStore | None = None, hub_overrides: dict[str, Any] | None = None,
@@ -145,6 +151,8 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         app.state.services = services or build_services()
         app.state.background = set()
         warm = asyncio.create_task(app.state.services.hub.warm())
+        # Scan the Start Menu (or .desktop files) once now, not on the first "open ...".
+        threading.Thread(target=app.state.services.platform.refresh_apps, daemon=True).start()
         sync_wake(app.state.services)
         yield
         warm.cancel()
@@ -288,6 +296,25 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         latest = max(runs, key=lambda r: r.created, default=None)
         return ok(latest.public() if latest else None)
 
+    @app.get(f"{API_PREFIX}/agent/runs/{{run_id}}/wait")
+    async def wait_run(request: Request, run_id: str, after: int = -1, timeout: float = 15.0):
+        """Returns as soon as the run changes after version `after` (or after `timeout` s), so
+        the desktop app reacts the instant something happens instead of polling."""
+        run = svc(request).orchestrator.get(run_id)
+        await run.wait_change(after, max(0.0, min(timeout, 25.0)))
+        return ok(run.public())
+
+    @app.post(f"{API_PREFIX}/warm")
+    async def warm(request: Request):
+        """Vico was just summoned or woken: open the AI connection and refresh the app list now,
+        not on the first request."""
+        s = svc(request)
+        task = asyncio.create_task(s.hub.warm())
+        request.app.state.background.add(task)
+        task.add_done_callback(request.app.state.background.discard)
+        threading.Thread(target=s.platform.refresh_apps, daemon=True).start()
+        return ok({"warming": True})
+
     @app.get(f"{API_PREFIX}/agent/runs/{{run_id}}")
     async def get_run(request: Request, run_id: str):
         return ok(svc(request).orchestrator.get(run_id).public())
@@ -312,19 +339,87 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
                     "description": registry.get(n).description} for n in registry.names()])
 
     # --- audio ---------------------------------------------------------------------------
+    def arm_endpointing(request: Request, s: Services) -> None:
+        """Watch the recording; when the user has finished speaking, stop and transcribe at once."""
+        stop_listening_job(s)
+        job: dict[str, Any] = {"stage": "recording", "heard": False}
+        s.listening = job
+
+        async def watch() -> None:
+            endpoint = Endpointer()
+            try:
+                while s.recorder.active:
+                    status = s.recorder.status()
+                    finished = endpoint.feed(status["level"], time.monotonic())
+                    job["heard"] = endpoint.heard
+                    if finished or status["full"]:
+                        break
+                    await asyncio.sleep(0.05)
+                if s.listening is not job or not s.recorder.active:
+                    return
+                language = s.recorder.language
+                wav, seconds = s.recorder.stop()
+                job["stage"] = "transcribing"
+                try:
+                    transcript = await s.hub.transcribe(wav, "audio/wav", language)
+                finally:
+                    del wav  # audio is never kept after transcription
+                job["result"] = {"seconds": round(seconds, 1), "transcript": {
+                    "text": transcript.text, "language": transcript.language, "provider": transcript.provider,
+                    "model": transcript.model, "latency_ms": transcript.latency_ms,
+                    "confidence": transcript.confidence}}
+            except VicoError as exc:
+                job["error"] = {"code": exc.code.value, "message": exc.message}
+            finally:
+                job["stage"] = "ready"
+
+        job["task"] = asyncio.create_task(watch())
+        request.app.state.background.add(job["task"])
+        job["task"].add_done_callback(request.app.state.background.discard)
+
+    def stop_listening_job(s: Services) -> None:
+        task = s.listening.get("task")
+        if task is not None and not task.done():
+            task.cancel()
+        s.listening = {}
+
     @app.post(f"{API_PREFIX}/audio/start")
     async def audio_start(request: Request, body: AudioStartRequest):
         s = svc(request)
         s.recorder.start(body.language.value if body.language else None)
-        return ok(s.recorder.status())
+        if body.auto_stop:
+            arm_endpointing(request, s)
+        return ok(audio_state(s))
+
+    @app.post(f"{API_PREFIX}/audio/auto-stop")
+    async def audio_auto_stop(request: Request):
+        """End-of-speech detection for a recording that is already running (started by "Vico")."""
+        s = svc(request)
+        if not s.recorder.active:
+            raise VicoError(ErrorCode.CONFLICT, "Not recording.", status=409)
+        arm_endpointing(request, s)
+        return ok(audio_state(s))
+
+    def audio_state(s: Services) -> dict[str, Any]:
+        state = s.recorder.status()
+        job = s.listening
+        if job:
+            state["stage"] = job.get("stage", "recording")
+            state["heard"] = job.get("heard", False)
+            if "result" in job:
+                state["result"] = job["result"]
+            if "error" in job:
+                state["error"] = job["error"]
+        return state
 
     @app.get(f"{API_PREFIX}/audio/status")
     async def audio_status(request: Request):
-        return ok(svc(request).recorder.status())
+        return ok(audio_state(svc(request)))
 
     @app.post(f"{API_PREFIX}/audio/stop")
     async def audio_stop(request: Request, body: AudioStopRequest):
         s = svc(request)
+        stop_listening_job(s)  # the user said "done" before the engine heard the pause
         language = s.recorder.language
         wav, seconds = s.recorder.stop()
         if not body.transcribe:
@@ -356,6 +451,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
 
     @app.post(f"{API_PREFIX}/audio/cancel")
     async def audio_cancel(request: Request):
+        stop_listening_job(svc(request))
         svc(request).recorder.cancel()
         return ok({"recording": False})
 

@@ -98,3 +98,36 @@ def parse_offline(text: str) -> ToolCallPlan | None:
 
 OFFLINE_HELP = ("Cloud is unavailable, so only simple typed English commands work: "
                 "'create folder Demo', 'find notes', 'open notepad', 'show files', 'save note Ideas: text'.")
+
+
+# --- the fast path ---------------------------------------------------------------------
+# Online, a request that is exactly one of these simple commands runs without asking the AI.
+# Much stricter than the offline parser: anything with more than one action, a connector or
+# an unknown app goes to the AI, so speed never changes what Vico does.
+_COMPOUND = re.compile(r"\b(?:and|then|after|before|with|but|if|so|also|while|until)\b|[,;:&]", re.IGNORECASE)
+
+
+def parse_fast(text: str) -> ToolCallPlan | None:
+    command = text.strip().rstrip(".!")
+    if not command or len(command) > 80 or "\n" in command:
+        return None
+    if m := _OPEN.match(command):
+        target = _clean(m["target"]).lower()
+        if target in _KNOWN_APPS:
+            return _call("open_app", f"Open {target}", name=_APP_ALIASES.get(target, target))
+        return None
+    if _COMPOUND.search(command):
+        return None
+    if m := _CREATE.match(command):
+        name = _clean(m["name"])
+        if name and len(name.split()) <= 4 and not re.search(r"[\\/]", name):
+            base = _location(m["loc"])
+            return _call("create_folder", f"Create folder {name}", path=f"{base}/{name}" if base else name)
+        return None
+    if m := _LIST.match(command):
+        loc = m["loc"]
+        if loc is None:
+            return _call("list_folder", "List files", path=".")
+        path = _location(loc)
+        return _call("list_folder", "List files", path=path) if path else None
+    return None

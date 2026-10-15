@@ -1,3 +1,4 @@
+mod lens;
 mod sidecar;
 
 use serde_json::{json, Value};
@@ -368,6 +369,48 @@ fn watch_cursor(app: AppHandle) {
     });
 }
 
+/// Vico's own windows (never captured by the Lens, never "the app in use").
+fn own_windows(app: &AppHandle) -> Vec<isize> {
+    #[cfg(windows)]
+    {
+        ["aura", "prompt"]
+            .iter()
+            .filter_map(|label| app.get_webview_window(label))
+            .filter_map(|window| window.hwnd().ok())
+            .map(|hwnd| hwnd.0 as isize)
+            .collect()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Vec::new()
+    }
+}
+
+/// Show the Lens (centre and radius in the aura's CSS pixels). False when the real screen
+/// cannot be magnified here, so the UI draws clear glass and says so instead of faking it.
+#[tauri::command]
+fn lens_show(app: AppHandle, x: f64, y: f64, radius: f64, zoom: f64) -> bool {
+    let Some((origin, _, scale)) = work_area(&app) else {
+        return false;
+    };
+    let px = origin.x + (x * scale).round() as i32;
+    let py = origin.y + (y * scale).round() as i32;
+    let r = (radius * scale).round() as i32;
+    let exclude = own_windows(&app);
+    let (tx, rx) = std::sync::mpsc::channel();
+    // Windows must be created and moved on the thread that runs the event loop.
+    let _ = app.run_on_main_thread(move || {
+        let _ = tx.send(lens::show(px, py, r, zoom as f32, &exclude));
+    });
+    rx.recv_timeout(Duration::from_millis(500)).unwrap_or(false)
+}
+
+#[tauri::command]
+fn lens_hide(app: AppHandle) {
+    let _ = app.run_on_main_thread(lens::hide);
+}
+
 #[tauri::command]
 fn prompt_hide(app: AppHandle) {
     if let Some(prompt) = app.get_webview_window("prompt") {
@@ -430,13 +473,6 @@ fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
         format!("Summon Vico   ({shortcut})")
     };
     let summon_item = MenuItem::with_id(app, "summon", summon_label, true, None::<&str>)?;
-    let settings_item = MenuItem::with_id(
-        app,
-        "settings",
-        "Settings and access codes",
-        true,
-        None::<&str>,
-    )?;
     let autostart_item = CheckMenuItem::with_id(
         app,
         "autostart",
@@ -449,13 +485,7 @@ fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[
-            &summon_item,
-            &settings_item,
-            &autostart_item,
-            &separator,
-            &quit_item,
-        ],
+        &[&summon_item, &autostart_item, &separator, &quit_item],
     )?;
     let tooltip = if shortcut.is_empty() {
         "Vico".to_string()
@@ -468,7 +498,6 @@ fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "summon" => summon(app, "vico://summon"),
-            "settings" => summon(app, "vico://settings"),
             "autostart" => {
                 // The check mark flips by itself; make the sign-in entry match it.
                 let manager = app.autolaunch();
@@ -561,6 +590,8 @@ pub fn run() {
             foreground_rect,
             aura_metrics,
             aura_interactive,
+            lens_show,
+            lens_hide,
             aura_show,
             aura_hide,
             prompt_show,

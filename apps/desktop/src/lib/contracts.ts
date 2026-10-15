@@ -1,3 +1,5 @@
+export type LookName = "peek" | "possession" | "yoyo" | "swarm" | "runner" | "lens";
+
 // Mirrors services/agent/app/contracts.py. Keep the two in sync (checked by contract fixtures).
 
 export const API_VERSION = "1";
@@ -92,8 +94,10 @@ export interface Settings {
   speech_server_url: string | null;
   voice_replies: boolean;
   wake_word: boolean;
-  look: "peek" | "possession" | "yoyo";
-  spots: Partial<Record<"peek" | "yoyo" | "possession_label", number>>;
+  look: LookName;
+  looks: LookName[];
+  rotate: boolean;
+  spots: Partial<Record<"peek" | "yoyo" | "possession_label" | "swarm" | "runner" | "lens", number>>;
 }
 
 export interface ProviderHealth {
@@ -152,7 +156,7 @@ export interface Step {
 export interface Run {
   id: string;
   state: RunState;
-  mode: "cloud" | "offline";
+  mode: "cloud" | "offline" | "local";
   language: Language | "auto";
   text: string;
   original: string;
@@ -164,7 +168,8 @@ export interface Run {
   message_localized: string | null;
   error: { code: ErrorCode; message: string } | null;
   cooldown_until: string | null;
-  control: { action: "stay" | "go" | "move" | "greet"; where?: string } | null;
+  control: { action: "stay" | "go" | "move" | "greet" | "settings" | "voice"; where?: string; value?: "on" | "off" } | null;
+  version: number; // bumps on every change; /agent/runs/{id}/wait returns on the next one
   timeline: { state: string; at: string; note: string }[];
 }
 
@@ -184,6 +189,10 @@ export interface AudioStatus {
   level: number;
   full: boolean;
   silent?: boolean; // every microphone tried gives only digital silence
+  stage?: "recording" | "transcribing" | "ready"; // with auto_stop: the engine ends the recording itself
+  heard?: boolean;
+  result?: { seconds: number; transcript: Transcript | null };
+  error?: { code: string; message: string };
   device?: string;
 }
 

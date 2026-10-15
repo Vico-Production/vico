@@ -2,7 +2,7 @@
 
 **Speak naturally. Get things done.** Vico is an agent that operates your computer for you. Press **Win + Alt + V** (Cmd + Option + V on Mac, later), then say or type what you want in English, Yorùbá, Hausa or Igbo: "open my browser and go to bbc.com", "open settings", "create a folder called Hackathon on my desktop", "open Claude and ask it to summarise my notes". Vico works out the language by itself, does the task, and answers in your language.
 
-There is no app window. On first run you pick how Vico appears, after watching each one play a whole task: **Peek** (a little creature that holds the bottom edge of the screen and walks to the app it is using), **Possession** (no body: the window Vico is working in lights up and Vico narrates on its edge), or **Yo-yo** (drops from the top edge on a thread and swings while it works). Nothing darkens or covers your screen, and you can keep using your apps while Vico works. Change the look any time in Settings. Vico lives in the system tray and puts no icon on your desktop.
+There is no app window. On first run you pick how Vico appears, after watching each one play a whole task: **Peek**, **Possession**, **Yo-yo**, **Swarm** (seventy little lights), **Window runner** (a tiny character on your title bars) or **Lens** (glass that magnifies the real screen under it; on Windows through the Windows Magnification API, elsewhere clear glass, and Vico says so). Pick one, or tick several and they **take turns**, one per summon. Whatever the look, Vico acts out every step at the real place on screen: it goes to the button it clicks, the field it types into, the window it opens. Nothing darkens or covers your screen, and you can keep using your apps while Vico works. Vico lives in the system tray and puts no icon on your desktop.
 
 ![Vico asking before it acts](docs/screenshots/06-approval.png)
 
@@ -17,10 +17,10 @@ Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on Google
 | Summon | Say anything with **"Vico"** in it ("Hey Vico", "Vico wassup", "Vico how far", "Vico, open Notepad"), press **Win + Alt + V**, or click the tray icon. It listens from the moment it is installed; nothing to switch on. (If another app owns the shortcut, Vico uses Ctrl + Alt + V; the tray menu shows which.) |
 | Talk | Vico comes up listening. Take your time: it waits for you to finish (a longer pause), shows what it heard, and goes on its own unless you start editing. After a task, or a greeting, it keeps listening about 10 seconds for your next request without taking your keyboard. |
 | Type instead | Press **Type instead**, or just start typing. The microphone stops and your typing takes over. |
-| Talk to Vico itself | "Stay" or "don't go yet" (it stays and dozes until called), "you can go", "move to the left / top corner / out of my way", "put your label at the bottom" (Possession). Any wording, in any of the four languages. You can also drag it by its handle: Peek's hands, the yo-yo's anchor, Possession's label. It ducks out of the way when your mouse slows down near it. |
+| Talk to Vico itself | "Stay" or "don't go yet" (it stays and dozes until called), "you can go", "move to the left / top corner / out of my way", "put your label at the bottom" (Possession), "talk to me" / "just text" (spoken replies on or off; text by default). Any wording, in any of the four languages; talking as part of a task ("talk to my friend on WhatsApp") is a task. You can also drag it by its handle: Peek's hands, the yo-yo's anchor, Possession's label, the swarm's nest, the runner, the Lens. It moves out of the way when your mouse slows down near it. |
 | Approve | **Enter** to allow, **Esc** to stop. Risky steps (delete, commands, uploads, sends) need **Enter held down**. |
 | Leave | **Esc** at any time. A running task is cancelled. |
-| Settings | Tray icon → Settings and access codes (or type "vico settings"): your Gemini code, an optional Groq backup code, "ask me before acting", "Hey Vico", and **Remove my codes and start over**. Vico starts when you sign in; untick it in the tray menu. |
+| Settings | There is no settings button. Ask Vico to **open its settings**, by voice or typing ("open your settings", "change my key", "change your look", "open your settings make I change am"); plain "open settings" opens the computer's Settings. There: your looks, the Gemini code, an optional Groq code, "ask me before acting", the wake word, and **Remove my codes and start over**. Vico starts when you sign in; untick it in the tray menu (which has only Summon, Start when I sign in, and Quit). |
 
 ## How it works
 
@@ -56,6 +56,21 @@ flowchart LR
 | Payments, typing passwords/PINs/card numbers | **never** | **never** |
 
 Other protections: paths are resolved and checked against the folders you allow (default: your home folder), system folders are write-protected, file and web text is passed to the AI as untrusted data, at most one step per approval, a step limit per task, and Cancel works at any point. The browser Vico controls uses its own profile, separate from your everyday browser.
+
+## Speed
+
+Measured on this Windows laptop with the real engine and a free Gemini key (median of 3, from request to finished):
+
+| Request | Before | After | AI calls |
+|---|---|---|---|
+| Typed "open notepad" | 16.4 s | 2.3 s | 2 → 0: an exact simple command runs on the computer |
+| One step, English ("list the files in my Documents folder") | 7.9–9.4 s | 2.7 s | 2 → 1: the step is marked final |
+| One step, Yorùbá (same request) | 12.8 s | 3.9 s | 4–5 → 1: the planner reads Yorùbá directly and answers in it |
+| Three steps (two folders, then list them) | 17.7 s | 11.1 s | 4 → 3 |
+
+Also: the app waits for each change instead of polling, the AI connection is warmed when Vico is summoned or
+woken, the app list is scanned once at start, the engine itself hears when you stop speaking, and the avatar
+reacts before any network call returns. Approvals, safety checks and verification are unchanged.
 
 ## Free Gemini limits
 
@@ -153,6 +168,7 @@ Language labels in the app stay "untested" until benchmark results exist.
 
 ## Privacy
 
+- Spoken replies are off until you ask ("Vico, talk to me"). Then answers are spoken in your language: Gemini 3.8 TTS with your own key for English, Hausa and Igbo; Pidgin with an English voice (Pidgin is not on Gemini's language list); Yorùbá only with your own speech server (YarnGPT), since Gemini's TTS does not list Yorùbá; offline English uses the computer's own voice. Audio stays in memory. Long answers: the first sentences are spoken, the rest stays on screen.
 - "Hey Vico" is recognised **on this computer** (Vosk, offline). While waiting, Vico listens only for that phrase: each slice of sound is checked and dropped, never stored or sent. Windows shows its microphone-in-use icon while this is on; turn it off in Settings. After the phrase, or when you summon Vico, your request is recorded in memory (max 15 s), sent for transcription, and discarded.
 - If your default microphone is muted or delivers pure silence, Vico tries your other microphones by itself.
 - Uninstalling Vico removes your saved access codes, settings and chosen look, so reinstalling starts fresh. Automatic updates keep them. On Linux, use "Remove my codes and start over" in Settings before removing the package.

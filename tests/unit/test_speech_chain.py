@@ -123,22 +123,62 @@ async def test_groq_whisper_is_english_only():
         await groq.transcribe(WAV, "audio/wav", None)
 
 
-async def test_voice_needs_consent_and_a_server():
-    h = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=False))
+class FakeGemini:
+    name = "gemini"
+
+    def __init__(self, fail=False):
+        self.fail, self.calls = fail, []
+
+    async def speak(self, text, model):
+        self.calls.append((text, model))
+        if self.fail:
+            raise VicoError("rate_limited", "busy")
+        return WAV
+
+
+async def test_voice_replies_follow_the_switch_and_the_language(monkeypatch):
+    import app.providers.tts as tts
+
+    monkeypatch.setattr(tts, "system_voice", lambda text: b"RIFFsystem")
+    off = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True))
+    assert not off.voice_ready()
     with pytest.raises(VicoError) as exc:
-        await h.speak("hi", "en")
-    assert exc.value.code == "consent_required"
-    h = hub({})
+        await off.speak("hi", "en")
+    assert exc.value.code == "unsupported"
+
+    gemini = FakeGemini()
+    on = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True, voice_replies=True),
+                     overrides={"gemini": gemini})
+    assert on.voice_ready()
+    out = await on.speak("Mo ti ṣẹ̀dá fóldà náà.", "ig")
+    assert out["provider"] == "gemini" and gemini.calls[-1][1] == "gemini-3.8-flash-tts"  # Igbo needs Flash
+    await on.speak("How far!", "pcm")
+    assert gemini.calls[-1][1] == "gemini-3.8-flash-lite-tts"  # Pidgin: an English voice
+    with pytest.raises(VicoError) as exc:  # Yoruba is not on Gemini's list: only the user's server
+        await on.speak("Ẹ káàbọ̀", "yo")
+    assert exc.value.code == "unsupported" and len(gemini.calls) == 2
+
+    busy = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True, voice_replies=True),
+                       overrides={"gemini": FakeGemini(fail=True)})
+    assert (await busy.speak("Done.", "en"))["provider"] == "system"  # offline English fallback
     with pytest.raises(VicoError):
-        await h.speak("hi", "en")
-    assert not h.voice_ready()
+        await busy.speak("An gama.", "ha")
+
+
+def test_long_answers_are_shortened_for_speech():
+    from app.providers.tts import MAX_SPOKEN_CHARS, spoken_part
+
+    long = "First sentence here. " * 30
+    part = spoken_part(long)
+    assert len(part) <= MAX_SPOKEN_CHARS and part.endswith(".")
+    assert spoken_part("Short.") == "Short."
 
 
 def test_speech_server_built_from_settings_and_keyring():
     store = SecretStore(MemorySecretBackend())
     store.set("speech_server", "tok-123")
     h = ProviderHub(store, lambda: Settings(cloud_consent=True, speech_server_url="https://speech.example.org"))
-    assert h.configured("omnilingual") and h.voice_ready()
+    assert h.configured("omnilingual")
     bad = ProviderHub(store, lambda: Settings(cloud_consent=True, speech_server_url="http://plain.example.org"))
     assert not bad.configured("omnilingual")
 

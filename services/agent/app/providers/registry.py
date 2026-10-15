@@ -7,6 +7,7 @@ provider is tried only when it has a key AND the user consented to fallback.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import socket
 import time
@@ -19,6 +20,7 @@ from app.agent import control
 from app.agent.language import safe_restoration
 from app.agent.prompts import SUMMARY_SYSTEM, UNDERSTAND_SYSTEM, translate_system
 from app.contracts import LANGUAGE_NAMES, ErrorCode, ProviderStatus, VicoError
+from app.providers import tts
 from app.providers.base import QuotaTracker, normalize_language, parse_json_text, provider_status
 from app.providers.gemini import GeminiProvider
 from app.providers.groq import GroqProvider
@@ -35,6 +37,9 @@ STT_ORDER = ("gemini", "omnilingual", "groq")
 HOSTS = {"groq": "api.groq.com", "gemini": "generativelanguage.googleapis.com"}
 FALLBACK_CODES = {ErrorCode.OFFLINE, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED, ErrorCode.PROVIDER_UNAVAILABLE}
 T = TypeVar("T")
+
+
+ONLINE_CACHE_S = 30  # a failed request still shows a real outage at once
 
 
 class ProviderHub:
@@ -158,21 +163,42 @@ class ProviderHub:
                 "control": control.clean(data.get("control"))}
 
     def voice_ready(self) -> bool:
-        s = self.settings()
-        return bool(s.cloud_consent and s.voice_replies and ("yarngpt" in self.overrides or self.speech_server()))
+        """Spoken replies are on (switched by voice: "Vico, talk to me")."""
+        return bool(self.settings().voice_replies)
 
     async def speak(self, text: str, language: str) -> dict[str, Any]:
-        """Speak `text` in a Nigerian voice from the user's speech server (YarnGPT)."""
-        self.require_consent()
+        """Speak a reply in the user's language, from the best free voice available.
+
+        Yorùbá: YarnGPT on the user's speech server (Gemini TTS does not list Yorùbá). English,
+        Hausa and Igbo: Gemini TTS with the user's key; Pidgin with an English voice. Offline
+        English: the computer's own voice."""
         if not self.settings().voice_replies:
             raise VicoError(ErrorCode.UNSUPPORTED, "Voice replies are switched off.")
-        voice = self.overrides.get("yarngpt")
-        if voice is None:
-            server = self.speech_server()
-            if server is None:
-                raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "No speech server is set up for voice replies.")
-            voice = VoiceProvider(server)
-        return await voice.speak(text, language)
+        part = tts.spoken_part(text)
+        started = time.monotonic()
+        if language == "yo":
+            voice = self.overrides.get("yarngpt")
+            server = self.speech_server() if voice is None else None
+            if voice is None and server is None:
+                raise VicoError(ErrorCode.UNSUPPORTED, "Yorùbá voice replies need your speech server.")
+            return await (voice or VoiceProvider(server)).speak(part, language)  # type: ignore[arg-type]
+        gemini = self.provider("gemini") if self.settings().cloud_consent else None
+        model = tts.GEMINI_TTS_MODEL.get(language)
+        if gemini is not None and model:
+            try:
+                audio = await gemini.speak(part, model)
+                return {"audio_b64": base64.b64encode(audio).decode("ascii"), "mime": "audio/wav",
+                        "provider": "gemini", "model": model, "spoken": part,
+                        "latency_ms": int((time.monotonic() - started) * 1000)}
+            except VicoError:
+                pass  # rate-limited or offline: fall back below where possible
+        if language in ("en", "pcm"):
+            audio_bytes = await asyncio.to_thread(tts.system_voice, part)
+            if audio_bytes:
+                return {"audio_b64": base64.b64encode(audio_bytes).decode("ascii"), "mime": "audio/wav",
+                        "provider": "system", "model": "system voice", "spoken": part,
+                        "latency_ms": int((time.monotonic() - started) * 1000)}
+        raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "No voice is available for this reply right now.")
 
     async def speech_server_health(self) -> dict[str, Any]:
         self.require_consent()
@@ -182,7 +208,9 @@ class ProviderHub:
         return await server.health()
 
     async def warm(self) -> None:
-        """Fetch each configured provider's model list ahead of time so the first request is fast."""
+        """Check the connection and fetch each configured provider's model list ahead of time
+        (opening its connection), so the first request is fast."""
+        await self.online()
         for name in PROVIDERS:
             provider = self.provider(name)
             if provider is not None and self.settings().cloud_consent:
@@ -218,7 +246,7 @@ class ProviderHub:
     # --- status ------------------------------------------------------------------------
     async def online(self) -> bool:
         stamp, value = self._online
-        if time.monotonic() - stamp < 5:
+        if time.monotonic() - stamp < ONLINE_CACHE_S:
             return value
 
         def probe(host: str) -> bool:
@@ -228,8 +256,14 @@ class ProviderHub:
             except OSError:
                 return False
 
-        results = await asyncio.gather(*(asyncio.to_thread(probe, h) for h in HOSTS.values()))
-        value = any(results)
+        # Online as soon as any provider answers; offline only when none does.
+        pending = {asyncio.ensure_future(asyncio.to_thread(probe, h)) for h in HOSTS.values()}
+        value = False
+        while pending and not value:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            value = any(task.result() for task in done)
+        for task in pending:
+            task.cancel()
         self._online = (time.monotonic(), value)
         return value
 
