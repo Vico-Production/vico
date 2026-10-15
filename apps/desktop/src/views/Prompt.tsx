@@ -2,7 +2,9 @@
 // type, asks before an action, and holds the one-time setup. No cards, no forms.
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../lib/api";
+import type { Look } from "../lib/layout";
 import type { Session, Intent } from "../lib/session";
+import { LookPicker } from "./Looks";
 
 const HOLD_MS = 1200;
 
@@ -105,9 +107,11 @@ function Approval({ session, send }: { session: Session; send: (i: Intent) => vo
   );
 }
 
-/** One-time setup and the tiny settings: an access code and one switch. */
+/** First run (pick a look, then an access code) and the small settings panel. */
 function Setup({ session, send }: { session: Session; send: (i: Intent) => void }) {
   const first = session.phase === "setup";
+  const [step, setStep] = useState<"look" | "codes">(first ? "look" : "codes");
+  const [look, setLook] = useState<Look | null>(first ? null : session.look);
   const [gemini, setGemini] = useState("");
   const [groq, setGroq] = useState("");
   const [approval, setApproval] = useState(true);
@@ -137,6 +141,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       .settings()
       .then((s) => {
         setApproval(s.require_approval);
+        if (!first && s.look) setLook(s.look);
         setWake(s.wake_word);
         setServerUrl(s.speech_server_url ?? "");
         setVoice(s.voice_replies);
@@ -165,20 +170,47 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       const keys = await api.secrets();
       if (!keys.gemini && !keys.groq) throw new Error("Paste your Gemini access code to continue.");
       if (serverToken.trim()) await api.saveSecret("speech_server", serverToken.trim());
+      const chosen = look ?? "peek";
       await api.updateSettings({
+        look: chosen,
         cloud_consent: true,
         onboarding_complete: true,
         require_approval: approval,
         wake_word: wake,
         ...(first ? {} : { speech_server_url: serverUrl.trim() || null, voice_replies: voice }),
       });
-      send({ type: "configured" });
+      send({ type: "configured", look: chosen });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setSaving(false);
     }
   };
+
+  if (step === "look") {
+    return (
+      <form
+        className="setup"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!look) return setError("Pick how I should appear. You can change it later in Settings.");
+          setError(null);
+          setStep("codes");
+        }}
+        data-testid="setup"
+      >
+        <p className="eyebrow">Hello, I'm Vico</p>
+        <p className="lead">How should I appear on your screen? Each one plays a whole task: listening, thinking, then working.</p>
+        <LookPicker value={look} onChange={(l) => { setLook(l); setError(null); }} />
+        {error && <p className="error-line" role="alert">{error}</p>}
+        <div className="choices">
+          <button className="drop allow" type="submit" data-testid="look-continue">
+            <span>Continue</span> <Key>⏎</Key>
+          </button>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <form
@@ -189,11 +221,18 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       }}
       data-testid="setup"
     >
-      <p className="eyebrow">{first ? "Hello, I'm Vico" : "Vico"}</p>
-      {first && (
+      <p className="eyebrow">{first ? "One last thing" : "Settings"}</p>
+      {first ? (
         <p className="lead">
-          Tell me what to do in English, Yorùbá, Hausa or Igbo, and I'll do it on this computer.
+          Tell me what to do in English, Yorùbá, Hausa or Igbo, and I'll do it on this computer. I need one free code
+          to understand you.
         </p>
+      ) : (
+        <>
+          <p className="section">How I appear</p>
+          <LookPicker value={look} onChange={setLook} />
+          <p className="section">Access codes</p>
+        </>
       )}
       <label className="line-field">
         <span>
@@ -205,7 +244,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         <input
           type="password"
           autoComplete="off"
-          autoFocus
+          autoFocus={first}
           value={gemini}
           placeholder={configured.gemini ? "•••••• (paste a new one to replace it)" : "Paste it here"}
           onChange={(e) => setGemini(e.target.value)}
@@ -275,6 +314,11 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         </button>
       )}
       <div className="choices">
+        {first && (
+          <button type="button" className="drop stop" onClick={() => setStep("look")}>
+            <span>Back</span>
+          </button>
+        )}
         <button className="drop allow" type="submit" disabled={saving} data-testid="save-setup">
           <span>{first ? "Begin" : "Save"}</span> <Key>⏎</Key>
         </button>

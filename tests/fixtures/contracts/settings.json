@@ -20,7 +20,8 @@
     "browser_channel": "auto",
     "speech_server_url": null,
     "voice_replies": true,
-    "wake_word": true
+    "wake_word": true,
+    "look": "peek"
   },
   "error": null
 }

@@ -40,6 +40,8 @@ class Settings(StrictModel):
     voice_replies: bool = True
     # Listen on this computer for "Hey Vico" (nothing heard while waiting leaves the computer).
     wake_word: bool = True
+    # How Vico appears on screen; picked at first run and changeable in Settings.
+    look: Literal["peek", "possession", "yoyo"] = "peek"
 
 
 class SettingsPatch(StrictModel):
@@ -60,6 +62,7 @@ class SettingsPatch(StrictModel):
     speech_server_url: str | None = Field(default=None, max_length=300)
     voice_replies: bool | None = None
     wake_word: bool | None = None
+    look: Literal["peek", "possession", "yoyo"] | None = None
 
 
 class SettingsRepository:

@@ -92,6 +92,7 @@ export interface Settings {
   speech_server_url: string | null;
   voice_replies: boolean;
   wake_word: boolean;
+  look: "peek" | "possession" | "yoyo";
 }
 
 export interface ProviderHealth {

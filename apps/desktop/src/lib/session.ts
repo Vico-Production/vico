@@ -4,6 +4,7 @@
 import { api, errorMessage } from "./api";
 import { emit } from "./bus";
 import { TERMINAL_STATES, type Language, type Run, type Step } from "./contracts";
+import { promptFrame, type Look, type Mood, type Rect } from "./layout";
 import { native, type Native } from "./native";
 
 export type Phase =
@@ -36,6 +37,8 @@ export interface Session {
   reviewUntil: number | null; // epoch ms when a heard request goes automatically
   speech: boolean; // the microphone path is ready
   offline: boolean;
+  look: Look; // how Vico appears: chosen at setup, changed in settings
+  target: Rect | null; // the window the user (or Vico) is working in, for Peek and Possession
 }
 
 export type Intent =
@@ -49,7 +52,7 @@ export type Intent =
   | { type: "submit" }
   | { type: "approve"; confirm: boolean }
   | { type: "reject" }
-  | { type: "configured" }
+  | { type: "configured"; look: Look }
   | { type: "reset" };
 
 export const STATE_EVENT = "vico://state";
@@ -80,7 +83,34 @@ export const INITIAL: Session = {
   reviewUntil: null,
   speech: false,
   offline: false,
+  look: "peek",
+  target: null,
 };
+
+/** What the look should be doing in each phase. */
+export function moodFor(phase: Phase): Mood {
+  switch (phase) {
+    case "listening":
+    case "review":
+    case "typing":
+    case "question":
+      return "listen";
+    case "transcribing":
+    case "thinking":
+    case "cooling":
+      return "think";
+    case "working":
+      return "work";
+    case "approval":
+      return "ask";
+    case "done":
+      return "done";
+    case "error":
+      return "sad";
+    default:
+      return "away"; // hidden, leaving, and setup (which has its own panel)
+  }
+}
 
 const REVIEW_MS = 900; // a heard request goes on its own unless the user starts editing
 const SILENCE_MS = 800; // stop listening after this much quiet following speech
@@ -123,6 +153,8 @@ export class VicoDriver {
   private busy = false;
   private voice = false;
   private audio: HTMLAudioElement | null = null;
+  private look: Look = "peek";
+  private targetPoller: number | null = null;
 
   constructor(private readonly windows: Native = native) {}
 
@@ -133,7 +165,8 @@ export class VicoDriver {
   }
 
   private set(patch: Partial<Session>) {
-    this.state = { ...this.state, ...patch };
+    // The look survives every reset of the session; only setup and settings change it.
+    this.state = { ...this.state, ...patch, look: this.look };
     this.listeners.forEach((fn) => fn(this.state));
     void emit(STATE_EVENT, this.state);
     if (this.state.phase !== this.lastPhase) {
@@ -146,13 +179,52 @@ export class VicoDriver {
   private async syncWindows(before: Phase) {
     const now = this.state.phase;
     if (now === "hidden") {
+      this.followTarget(false);
       await this.windows.hidePrompt();
       await this.windows.hideAura();
       return;
     }
-    if (before === "hidden") await this.windows.showAura();
-    if (PROMPT_PHASES.includes(now)) await this.windows.showPrompt();
-    else await this.windows.hidePrompt(); // hand the keyboard back to the user's apps
+    if (before === "hidden") {
+      this.followTarget(true);
+      await this.windows.showAura();
+    }
+    if (PROMPT_PHASES.includes(now)) {
+      await this.placePrompt();
+      await this.windows.showPrompt();
+    } else await this.windows.hidePrompt(); // hand the keyboard back to the user's apps
+  }
+
+  /** The prompt window sits next to the look (or inside the possessed window). */
+  private async placePrompt() {
+    if (!PROMPT_PHASES.includes(this.state.phase)) return;
+    const screen = { width: window.innerWidth, height: window.innerHeight };
+    const frame = promptFrame(this.look, this.state.phase, moodFor(this.state.phase), screen, this.state.target);
+    await this.windows.placePrompt?.(frame);
+  }
+
+  /** Peek and Possession follow the window being worked in; Yo-yo stays in its corner. */
+  private followTarget(on: boolean) {
+    if (this.targetPoller !== null) window.clearInterval(this.targetPoller);
+    this.targetPoller = null;
+    if (!on || !this.windows.foregroundRect || this.look === "yoyo") return;
+    const poll = async () => {
+      const rect = (await this.windows.foregroundRect?.().catch(() => null)) ?? null;
+      const before = this.state.target;
+      const keys: (keyof Rect)[] = ["x", "y", "width", "height"];
+      const same = before && rect && keys.every((k) => Math.abs(before[k] - rect[k]) < 2);
+      if (same || (!before && !rect)) return;
+      this.set({ target: rect });
+      if (this.look === "possession" && !["setup", "settings"].includes(this.state.phase)) await this.placePrompt();
+    };
+    void poll();
+    this.targetPoller = window.setInterval(() => void poll(), 250);
+  }
+
+  private remember(look: Look | undefined | null) {
+    if (look && look !== this.look) {
+      this.look = look;
+      this.set({});
+    }
   }
 
   private clearTimer() {
@@ -172,6 +244,7 @@ export class VicoDriver {
     for (let attempt = 0; attempt < 60; attempt++) {
       try {
         const settings = await api.settings();
+        this.remember(settings.look);
         if (this.state.phase !== "hidden") return; // the user already summoned Vico
         if (!settings.onboarding_complete) return this.set({ ...INITIAL, phase: "setup" });
         const launch = await this.windows.launchInfo?.();
@@ -230,7 +303,9 @@ export class VicoDriver {
         this.clearTimer();
         return this.set({ ...INITIAL, phase: "setup" });
       case "configured":
-        this.set({ phase: "done", narration: "", message: "You're all set. Press Win + Alt + V whenever you need me.", localized: null });
+        this.remember(intent.look);
+        this.set({ phase: "done", narration: "", localized: null,
+          message: "You're all set. Say \"Hey Vico\" or press Win + Alt + V whenever you need me." });
         this.timer = window.setTimeout(() => this.leave(), 3600);
         return;
     }
@@ -252,6 +327,7 @@ export class VicoDriver {
     let offline = false;
     try {
       const [settings, health] = await Promise.all([api.settings(), api.health()]);
+      this.remember(settings.look);
       if (!settings.onboarding_complete || (!health.cloud_ready && health.online)) {
         if (woke) void api.cancelRecording().catch(() => undefined);
         this.set({ ...INITIAL, phase: "setup" });

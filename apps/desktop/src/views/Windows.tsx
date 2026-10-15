@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { emit, listen } from "../lib/bus";
-import { INITIAL, INTENT_EVENT, STATE_EVENT, VicoDriver, type Intent, type Session } from "../lib/session";
+import { promptFrame, type Rect } from "../lib/layout";
+import { native } from "../lib/native";
+import { INITIAL, INTENT_EVENT, STATE_EVENT, VicoDriver, moodFor, type Intent, type Session } from "../lib/session";
 import { Aura } from "./Aura";
 import { Prompt } from "./Prompt";
 
@@ -38,9 +40,16 @@ export function PromptWindow() {
   return <Prompt session={session} send={send} />;
 }
 
+/** The stand-in app window on the preview desktop, which Peek and Possession follow. */
+function deskWindow(): Rect {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  return { x: Math.round(w * 0.5), y: Math.round(h * 0.12), width: Math.round(w * 0.42), height: Math.round(h * 0.52) };
+}
+
 /** Browser preview: both layers in one page over a stand-in desktop. */
 export function Stage() {
-  const driver = useMemo(() => new VicoDriver(), []);
+  const driver = useMemo(() => new VicoDriver({ ...native, foregroundRect: async () => deskWindow() }), []);
   const session = useDriver(driver);
   const send = useCallback((intent: Intent) => driver.dispatch(intent), [driver]);
   useEffect(() => {
@@ -55,11 +64,14 @@ export function Stage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [driver]);
+  const screen = { width: window.innerWidth, height: window.innerHeight };
+  const frame = promptFrame(session.look, session.phase, moodFor(session.phase), screen, session.target);
+  const b = deskWindow();
   return (
     <div className="stage" data-testid="stage">
       <div className="desk" aria-hidden="true">
         <div className="desk-window a" />
-        <div className="desk-window b" />
+        <div className="desk-window b" style={{ left: b.x, top: b.y, width: b.width, height: b.height }} />
         <div className="desk-bar" />
       </div>
       {session.phase === "hidden" && (
@@ -69,7 +81,8 @@ export function Stage() {
         </button>
       )}
       <Aura session={session} />
-      <div className={`stage-prompt ${session.phase === "hidden" ? "" : "on"}`}>
+      <div className={`stage-prompt ${session.phase === "hidden" ? "" : "on"}`}
+        style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}>
         <Prompt session={session} send={send} />
       </div>
     </div>

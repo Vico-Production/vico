@@ -126,3 +126,11 @@ def test_reset_removes_codes_and_settings(client):
     assert client.post("/api/v1/reset", headers=AUTH).json()["data"]["reset"] is True
     assert client.get("/api/v1/secrets", headers=AUTH).json()["data"]["gemini"] is False
     assert client.get("/api/v1/settings", headers=AUTH).json()["data"]["onboarding_complete"] is False
+
+
+def test_look_is_saved_validated_and_cleared_by_reset(client):
+    assert client.get("/api/v1/settings", headers=AUTH).json()["data"]["look"] == "peek"
+    assert client.put("/api/v1/settings", headers=AUTH, json={"look": "yoyo"}).json()["data"]["look"] == "yoyo"
+    assert client.put("/api/v1/settings", headers=AUTH, json={"look": "dragon"}).status_code == 422
+    client.post("/api/v1/reset", headers=AUTH)
+    assert client.get("/api/v1/settings", headers=AUTH).json()["data"]["look"] == "peek"

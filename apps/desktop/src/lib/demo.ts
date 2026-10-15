@@ -21,7 +21,12 @@ export function demoTransport() {
   const settings = { onboarding_complete: true, cloud_consent: true, require_approval: true,
     allow_send_without_approval: false, workspace: "~/Documents/VicoDemo", allowed_roots: ["~"],
     stt_provider: "gemini", llm_provider: "gemini", fallback_consent: true, stt_model: null, llm_model: null,
-    daily_request_budget: 500, max_steps: 12, browser_channel: "auto", speech_server_url: null, voice_replies: true, wake_word: false };
+    daily_request_budget: 500, max_steps: 12, browser_channel: "auto", speech_server_url: null, voice_replies: true, wake_word: false,
+    look: "peek" as string };
+  // ?first=1 starts at first-run setup; ?look=possession|yoyo|peek picks a look.
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("first")) settings.onboarding_complete = false;
+  if (params.get("look")) settings.look = params.get("look") as string;
   const text = "Open BBC News and read me the top headline";
 
   const run = (): Run => {
@@ -47,8 +52,9 @@ export function demoTransport() {
       message: "BBC News is open. The top headline is shown at the top of the page." };
   };
 
-  return async (method: Method, path: string): Promise<Envelope<unknown>> => {
+  return async (method: Method, path: string, body?: unknown): Promise<Envelope<unknown>> => {
     await new Promise((r) => setTimeout(r, 60));
+    if (path === "/settings" && method === "PUT") Object.assign(settings, body);
     if (path === "/settings") return ok(settings);
     if (path === "/health") {
       const provider = { status: "ready", configured: true, requests_today: 3, daily_budget: 500,

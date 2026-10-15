@@ -21,6 +21,7 @@ const settings: Settings = {
   speech_server_url: null,
   voice_replies: true,
   wake_word: true,
+  look: "peek",
 };
 
 const provider = { status: "ready" as const, configured: true, requests_today: 0, daily_budget: 500,
@@ -118,6 +119,12 @@ describe("Vico", () => {
       base(c, (call) => (call.path === "/settings" && call.method === "GET" ? { ...settings, onboarding_complete: false } : undefined)),
     );
     render(<Stage />);
+    // First, pick how Vico appears; Continue without a pick explains why it waits.
+    fireEvent.click(await screen.findByTestId("look-continue"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Pick how I should appear");
+    fireEvent.click(screen.getByTestId("look-yoyo"));
+    expect(screen.getByTestId("look-yoyo")).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByTestId("look-continue"));
     const code = await screen.findByTestId("gemini-code");
     fireEvent.change(code, { target: { value: "AIzaTestKey12345" } });
     serve((c) => {
@@ -129,9 +136,40 @@ describe("Vico", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/settings")).toBe(true));
     expect(calls.find((c) => c.path === "/secrets/gemini")?.body).toEqual({ api_key: "AIzaTestKey12345" });
     expect(calls.find((c) => c.method === "PUT" && c.path === "/settings")?.body).toMatchObject({
-      cloud_consent: true, onboarding_complete: true,
+      cloud_consent: true, onboarding_complete: true, look: "yoyo",
     });
     expect(await screen.findByTestId("result")).toHaveTextContent("all set");
+  });
+
+  it("Possession lights up the window being used and narrates on its edge", async () => {
+    const thinking = run({ state: "planning", steps: [], pending_step_id: null });
+    serve((c) => base(c, (call) => {
+      if (call.path === "/settings") return { ...settings, look: "possession" };
+      return call.path.startsWith("/agent/runs") ? thinking : undefined;
+    }));
+    render(<Stage />);
+    await summonAndType("open notepad");
+    await waitFor(() => expect(screen.getByTestId("narration")).toHaveTextContent("Vico · Thinking"));
+    expect(screen.getByTestId("aura").className).toContain("look-possession");
+    expect(document.querySelector(".possession")).not.toBeNull(); // framed around the stand-in window
+  });
+
+  it("changes the look from settings", async () => {
+    const calls = serve((c) => base(c, (call) => (call.path === "/secrets" ? { gemini: true, groq: false } : undefined)));
+    render(<Stage />);
+    await screen.findByTestId("summon");
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "v", ctrlKey: true, altKey: true }));
+    });
+    // Open settings the way the tray does, by typing the settings phrase.
+    const words = await screen.findByTestId("words");
+    fireEvent.change(words, { target: { value: "vico settings" } });
+    fireEvent.keyDown(words, { key: "Enter" });
+    fireEvent.click(await screen.findByTestId("look-possession"));
+    fireEvent.click(screen.getByTestId("save-setup"));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT" && c.path === "/settings")?.body).toMatchObject({
+      look: "possession" }));
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("look-possession"));
   });
 
   it("shows the cooling countdown while the free key rests", async () => {

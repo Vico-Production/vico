@@ -2,7 +2,7 @@
 
 **Speak naturally. Get things done.** Vico is an agent that operates your computer for you. Press **Win + Alt + V** (Cmd + Option + V on Mac, later), then say or type what you want in English, Yorùbá, Hausa or Igbo: "open my browser and go to bbc.com", "open settings", "create a folder called Hackathon on my desktop", "open Claude and ask it to summarise my notes". Vico works out the language by itself, does the task, and answers in your language.
 
-There is no app window and no settings page. When summoned, the edges of the screen darken and glow, liquid light drips from the top edge into a pool at the bottom, and your words rise out of it. While Vico works, light races around the screen border. When it finishes, the screen flashes warm white and everything evaporates. Vico lives in the system tray.
+There is no app window. On first run you pick how Vico appears, after watching each one play a whole task: **Peek** (a little creature that holds the bottom edge of the screen and walks to the app it is using), **Possession** (no body: the window Vico is working in lights up and Vico narrates on its edge), or **Yo-yo** (drops from the top edge on a thread and swings while it works). Nothing darkens or covers your screen, and you can keep using your apps while Vico works. Change the look any time in Settings. Vico lives in the system tray and puts no icon on your desktop.
 
 ![Vico asking before it acts](docs/screenshots/06-approval.png)
 
@@ -112,7 +112,7 @@ npm run build        # package the engine and build installers for this OS
 
 ```text
 apps/desktop/            React + Vite UI and the Tauri (Rust) shell
-  src/views/             Aura (full-screen glow, liquid, narration), Prompt (words, approval, setup)
+  src/views/             Looks (Peek, Possession, Yo-yo, live previews), Aura (the look over your screen), Prompt (words, approval, setup)
   src/lib/               session driver, API client, contracts (mirrors Python), window bus, demo engine
   src-tauri/             tray, global shortcut, two see-through windows, engine lifecycle, token proxy
 services/agent/app/      Python engine
@@ -144,7 +144,7 @@ docs/                    build pack, implementation tasks, API contract, demo gu
 | Rust desktop shell compiles and launches | **Not yet on this machine** (missing MSVC Build Tools); compiled by CI |
 | Speech recognition accuracy for each language | **Not measured** — run `scripts/benchmark_languages.py` with consenting speakers |
 | Translation quality | **Not measured** |
-| Overlay look and flow (glow, drips, approval, cooldown, finish) | Captured in a browser at 1366×768 with the scripted demo; the real see-through desktop windows are **not yet seen running** (Rust shell not compiled here) |
+| The three looks through a whole task (listen, think, approve, work, cool down, finish) | Captured in a browser at 1366×768 with the scripted demo; following the real foreground window is **not yet tested on a real desktop** |
 | Memory and startup time on a 4 GB laptop | **Not measured** |
 | Linux build and desktop control | **Not tested on a Linux machine yet** (CI builds and tests it) |
 
@@ -154,7 +154,7 @@ Language labels in the app stay "untested" until benchmark results exist.
 
 - "Hey Vico" is recognised **on this computer** (Vosk, offline). While waiting, Vico listens only for that phrase: each slice of sound is checked and dropped, never stored or sent. Windows shows its microphone-in-use icon while this is on; turn it off in Settings. After the phrase, or when you summon Vico, your request is recorded in memory (max 15 s), sent for transcription, and discarded.
 - If your default microphone is muted or delivers pure silence, Vico tries your other microphones by itself.
-- Uninstalling with "Delete the application data" ticked also removes your saved access codes and settings.
+- Uninstalling Vico removes your saved access codes, settings and chosen look, so reinstalling starts fresh. Automatic updates keep them. On Linux, use "Remove my codes and start over" in Settings before removing the package.
 - Nothing goes to a cloud provider until you allow cloud processing. Each provider's terms are linked in Settings. Google's free tier may use data to improve its products.
 - During a task, text from files or web pages that Vico reads is sent to the provider to plan the next step. With approval on, you see each read first.
 - API keys live in Windows Credential Manager or your Linux keyring, never in Vico's files or the UI.

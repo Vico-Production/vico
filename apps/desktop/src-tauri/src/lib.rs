@@ -21,14 +21,16 @@ struct AppState {
     http: reqwest::Client,
     autostarted: bool,
     shortcut: Mutex<String>, // the shortcut that was actually registered ("" if none)
+    // The last window the user worked in that is not Vico's own (Windows: HWND; Linux: geometry).
+    foreground: Mutex<(isize, Option<(i32, i32, i32, i32)>)>,
 }
 
 const METHODS: [&str; 4] = ["GET", "POST", "PUT", "DELETE"];
 
-// The prompt sits above the liquid pool at the bottom centre of the screen.
-const PROMPT_WIDTH: f64 = 960.0;
-const PROMPT_HEIGHT: f64 = 440.0;
-const PROMPT_BOTTOM_GAP: f64 = 190.0;
+// Before the UI places it next to the chosen look, the prompt waits at the bottom centre.
+const PROMPT_WIDTH: f64 = 460.0;
+const PROMPT_HEIGHT: f64 = 138.0;
+const PROMPT_BOTTOM_GAP: f64 = 120.0;
 
 fn envelope_error(code: &str, message: &str) -> Value {
     json!({
@@ -115,17 +117,23 @@ fn launch_info(state: State<'_, AppState>) -> Value {
     json!({ "autostart": state.autostarted, "shortcut": shortcut })
 }
 
-/// Size the aura to cover the whole primary screen and park the prompt above the pool.
+/// The primary screen's work area (the screen minus the taskbar): origin, size and scale.
+/// Vico's looks live inside it, so Peek stands on the taskbar instead of hiding behind it.
+fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {
+    let aura = app.get_webview_window("aura")?;
+    let monitor = aura.primary_monitor().ok()??;
+    let area = monitor.work_area();
+    Some((area.position, area.size, monitor.scale_factor()))
+}
+
+/// Size the aura to cover the work area and park the prompt near the bottom centre.
 fn place_windows(app: &AppHandle) {
     let Some(aura) = app.get_webview_window("aura") else {
         return;
     };
-    let Ok(Some(monitor)) = aura.primary_monitor() else {
+    let Some((origin, size, scale)) = work_area(app) else {
         return;
     };
-    let origin = monitor.position();
-    let size = monitor.size();
-    let scale = monitor.scale_factor();
     let _ = aura.set_position(PhysicalPosition::new(origin.x, origin.y));
     let _ = aura.set_size(PhysicalSize::new(size.width, size.height));
     if let Some(prompt) = app.get_webview_window("prompt") {
@@ -174,6 +182,144 @@ fn prompt_show(app: AppHandle) {
         let _ = prompt.show();
         let _ = prompt.set_focus();
     }
+}
+
+/// Put the prompt next to the chosen look. Coordinates are CSS pixels of the aura window.
+#[tauri::command]
+fn prompt_frame(app: AppHandle, x: f64, y: f64, width: f64, height: f64) {
+    let Some(prompt) = app.get_webview_window("prompt") else {
+        return;
+    };
+    let Some((origin, _, scale)) = work_area(&app) else {
+        return;
+    };
+    let _ = prompt.set_size(PhysicalSize::new(
+        (width * scale).round() as u32,
+        (height * scale).round() as u32,
+    ));
+    let _ = prompt.set_position(PhysicalPosition::new(
+        origin.x + (x * scale).round() as i32,
+        origin.y + (y * scale).round() as i32,
+    ));
+}
+
+/// The window the user is working in (never Vico's own), in CSS pixels of the aura window.
+/// Peek walks towards it and Possession lights it up. Null when it cannot be known
+/// (Wayland, macOS for now, or no ordinary window in front).
+#[tauri::command]
+fn foreground_rect(app: AppHandle) -> Option<Value> {
+    let (origin, _, scale) = work_area(&app)?;
+    let (x, y, w, h) = native_foreground(&app)?;
+    Some(json!({
+        "x": (x - origin.x) as f64 / scale,
+        "y": (y - origin.y) as f64 / scale,
+        "width": w as f64 / scale,
+        "height": h as f64 / scale,
+    }))
+}
+
+#[cfg(windows)]
+fn native_foreground(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetForegroundWindow, GetWindowRect, IsIconic, IsWindowVisible,
+    };
+
+    // Vico's own windows, the desktop and the taskbar never count as "the app in use".
+    let ours: Vec<isize> = ["aura", "prompt"]
+        .iter()
+        .filter_map(|label| app.get_webview_window(label))
+        .filter_map(|window| window.hwnd().ok())
+        .map(|hwnd| hwnd.0 as isize)
+        .collect();
+    let shell = |hwnd: HWND| -> bool {
+        let mut buf = [0u16; 64];
+        let len = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+        let class = String::from_utf16_lossy(&buf[..len.max(0) as usize]);
+        matches!(
+            class.as_str(),
+            "Progman"
+                | "WorkerW"
+                | "Shell_TrayWnd"
+                | "Shell_SecondaryTrayWnd"
+                | "NotifyIconOverflowWindow"
+        )
+    };
+
+    let state = app.state::<AppState>();
+    let mut memo = state.foreground.lock().ok()?;
+    let current = unsafe { GetForegroundWindow() };
+    if !current.is_null() && !ours.contains(&(current as isize)) && !shell(current) {
+        memo.0 = current as isize;
+    }
+    let hwnd = memo.0 as HWND;
+    if hwnd.is_null() {
+        return None;
+    }
+    unsafe {
+        if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
+            return None;
+        }
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        // The extended frame excludes the invisible resize borders Windows adds around windows.
+        let framed = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+            &mut rect as *mut RECT as *mut core::ffi::c_void,
+            std::mem::size_of::<RECT>() as u32,
+        ) == 0;
+        if !framed && GetWindowRect(hwnd, &mut rect) == 0 {
+            return None;
+        }
+        Some((
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+        ))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn native_foreground(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    // X11 only (xdotool); on Wayland this fails and Vico falls back to its home position.
+    let run = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("xdotool")
+            .args(args)
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let state = app.state::<AppState>();
+    let mut memo = state.foreground.lock().ok()?;
+    let name = run(&["getactivewindow", "getwindowname"]).unwrap_or_default();
+    if name.trim() != "Vico" {
+        if let Some(text) = run(&["getactivewindow", "getwindowgeometry", "--shell"]) {
+            let get = |key: &str| {
+                text.lines()
+                    .find_map(|line| line.strip_prefix(key)?.trim().parse::<i32>().ok())
+            };
+            if let (Some(x), Some(y), Some(w), Some(h)) =
+                (get("X="), get("Y="), get("WIDTH="), get("HEIGHT="))
+            {
+                memo.1 = Some((x, y, w, h));
+            }
+        }
+    }
+    memo.1
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn native_foreground(_app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    None
 }
 
 #[tauri::command]
@@ -335,6 +481,7 @@ pub fn run() {
             http,
             autostarted,
             shortcut: Mutex::new(String::new()),
+            foreground: Mutex::new((0, None)),
         })
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -363,6 +510,8 @@ pub fn run() {
             api_request,
             sidecar_status,
             launch_info,
+            prompt_frame,
+            foreground_rect,
             aura_show,
             aura_hide,
             prompt_show,
