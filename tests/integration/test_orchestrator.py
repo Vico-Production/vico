@@ -11,12 +11,14 @@ from app.store.settings import SettingsPatch
 pytestmark = pytest.mark.anyio
 
 
-def planner(plans, translations=None):
+def planner(plans, translations=None, detected="yo"):
     plans = list(plans)
 
     def respond(system, user):
         if system.startswith("You translate"):
             return {"translation": (translations or {}).get(user, "translated: " + user)}
+        if system.startswith("The user gave"):
+            return {"language": detected, "english": (translations or {}).get(user, "translated: " + user)}
         return plans.pop(0) if plans else {"kind": "done", "message": "All done."}
 
     return MockProvider(responder=respond)
@@ -235,6 +237,27 @@ async def test_daily_limit_stops_with_a_clear_message(make):
     run = s.orchestrator.start("make folder", "en")
     await wait_for(run, RunState.FAILED)
     assert "used up" in run.message and run.steps == []
+
+
+async def test_language_is_detected_when_not_given(make, roots):
+    _, ws = roots
+    provider = planner([call("create_folder", path="Ìpàdé"), {"kind": "done", "message": "Created Ìpàdé."}],
+                       translations={"Ṣẹ̀dá fóldà Ìpàdé": "Create folder Ìpàdé", "Created Ìpàdé.": "Mo ti ṣẹ̀dá Ìpàdé."})
+    s = make(provider, require_approval=False)
+    run = s.orchestrator.start("Ṣẹ̀dá fóldà Ìpàdé")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.language == "yo" and run.canonical == "Create folder Ìpàdé"
+    assert run.message_localized == "Mo ti ṣẹ̀dá Ìpàdé."
+    assert (ws / "Ìpàdé").is_dir()
+
+
+async def test_plain_english_skips_the_detection_call(make):
+    provider = planner([{"kind": "done", "message": "ok"}])
+    s = make(provider)
+    run = s.orchestrator.start("open my downloads folder")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.language == "en"
+    assert not any(system.startswith("The user gave") for system, _ in provider.calls)
 
 
 async def test_only_one_active_run(make):

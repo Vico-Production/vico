@@ -96,3 +96,57 @@ def test_quota_reset_is_midnight_pacific():
 
 def test_error_bodies_are_realistic_json():
     assert json.loads(json.dumps(PER_MINUTE))["error"]["status"] == "RESOURCE_EXHAUSTED"
+
+
+async def test_groq_chain_switches_models_too():
+    from app.providers.groq import GroqProvider
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "llama-3.3-70b-versatile"}, {"id": "openai/gpt-oss-120b"}]})
+        model = json.loads(request.content)["model"]
+        calls.append(model)
+        if model == "llama-3.3-70b-versatile":
+            return httpx.Response(429, headers={"retry-after": "12"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    p = GroqProvider("gsk_test", httpx.AsyncClient(transport=httpx.MockTransport(handler)), QuotaTracker())
+    c = await p.complete("s", "u", json_mode=True)
+    assert c.model == "openai/gpt-oss-120b" and calls == ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
+
+
+async def test_hub_falls_back_to_groq_instantly_and_reports_soonest_cooldown():
+    from app.providers.mock import MockProvider
+    from app.providers.registry import ProviderHub
+    from app.security.secret_store import MemorySecretBackend, SecretStore
+    from app.store.settings import Settings
+
+    resting = MockProvider(replies=[VicoError("rate_limited", "gemini resting", retry_after_s=40)] * 2)
+    groq_ok = MockProvider(replies=["{\"kind\": \"done\", \"message\": \"ok\"}"])
+    hub = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True),
+                      overrides={"gemini": resting, "groq": groq_ok})
+    c = await hub.complete("s", "u")
+    assert "done" in c.text and len(groq_ok.calls) == 1
+
+    groq_resting = MockProvider(replies=[VicoError("rate_limited", "groq resting", retry_after_s=9)])
+    hub = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True),
+                      overrides={"gemini": resting, "groq": groq_resting})
+    with pytest.raises(VicoError) as exc:
+        await hub.complete("s", "u")
+    assert exc.value.retry_after_s == 9
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("open my downloads folder", "en"),
+    ("create a folder called Hackathon on my desktop", "en"),
+    ("Ṣẹ̀dá fóldà tuntun", "yo"),
+    ("Ƙirƙiri babban fayil", "ha"),
+    ("Mepụta folda ọhụrụ", "ig"),
+    ("bude notepad", None),
+])
+def test_local_language_guess(text, expected):
+    from app.agent.language import guess_language
+
+    assert guess_language(text) == expected

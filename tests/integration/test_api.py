@@ -97,10 +97,16 @@ def test_invalid_language_rejected(client):
     assert r.status_code == 422
 
 
-def test_translate_endpoint(client):
-    r = client.post("/api/v1/interpreter/translate", headers=AUTH,
-                    json={"text": "Hello", "source": "en", "target": "en"})
-    assert r.json()["data"]["text"] == "Hello"
+def test_current_run_endpoint(client):
+    assert client.get("/api/v1/agent/runs/current", headers=AUTH).json()["data"] is None
+    client.post("/api/v1/agent/runs", headers=AUTH, json={"text": "make ApiDemo"})
+    current = client.get("/api/v1/agent/runs/current", headers=AUTH).json()["data"]
+    assert current["text"] == "make ApiDemo"
+
+
+def test_interpreter_endpoint_is_gone(client):
+    r = client.post("/api/v1/interpreter/translate", headers=AUTH, json={"text": "hi", "source": "en", "target": "yo"})
+    assert r.status_code in (404, 405)
 
 
 def test_languages_are_labelled_untested_by_default(client):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -39,7 +40,7 @@ ALLOWED_ORIGINS = {"tauri://localhost", "http://tauri.localhost", "https://tauri
 # --- request bodies --------------------------------------------------------------------
 class RunRequest(StrictModel):
     text: str = Field(min_length=1, max_length=MAX_TEXT_INPUT_CHARS)
-    language: Language = Language.EN
+    language: Language | None = None  # None: detect from the request
     original: str | None = Field(default=None, max_length=MAX_TEXT_INPUT_CHARS)
 
 
@@ -58,17 +59,11 @@ class SecretRequest(StrictModel):
 
 
 class AudioStartRequest(StrictModel):
-    language: Language = Language.EN
+    language: Language | None = None  # None: detect from the speech
 
 
 class AudioStopRequest(StrictModel):
     transcribe: bool = True
-
-
-class TranslateRequest(StrictModel):
-    text: str = Field(min_length=1, max_length=MAX_TEXT_INPUT_CHARS)
-    source: Language
-    target: Language
 
 
 @dataclass
@@ -124,7 +119,10 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.services = services or build_services()
+        app.state.background = set()
+        warm = asyncio.create_task(app.state.services.hub.warm())
         yield
+        warm.cancel()
         s: Services = app.state.services
         s.recorder.cancel()
         await s.orchestrator.shutdown()
@@ -205,6 +203,9 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         s = svc(request)
         try:
             s.secrets.set(_provider(name), body.api_key)
+            task = asyncio.create_task(s.hub.warm())
+            request.app.state.background.add(task)
+            task.add_done_callback(request.app.state.background.discard)
         except VicoError:
             raise
         except Exception as exc:
@@ -225,8 +226,16 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     # --- agent ---------------------------------------------------------------------------
     @app.post(f"{API_PREFIX}/agent/runs")
     async def start_run(request: Request, body: RunRequest):
-        run = svc(request).orchestrator.start(body.text, body.language.value, body.original)
+        language = body.language.value if body.language else None
+        run = svc(request).orchestrator.start(body.text, language, body.original)
         return ok(run.public())
+
+    @app.get(f"{API_PREFIX}/agent/runs/current")
+    async def current_run(request: Request):
+        """The most recent task, so every Vico surface can follow it."""
+        runs = svc(request).orchestrator.runs.values()
+        latest = max(runs, key=lambda r: r.created, default=None)
+        return ok(latest.public() if latest else None)
 
     @app.get(f"{API_PREFIX}/agent/runs/{{run_id}}")
     async def get_run(request: Request, run_id: str):
@@ -255,7 +264,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     @app.post(f"{API_PREFIX}/audio/start")
     async def audio_start(request: Request, body: AudioStartRequest):
         s = svc(request)
-        s.recorder.start(body.language.value)
+        s.recorder.start(body.language.value if body.language else None)
         return ok(s.recorder.status())
 
     @app.get(f"{API_PREFIX}/audio/status")
@@ -281,12 +290,6 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
     async def audio_cancel(request: Request):
         svc(request).recorder.cancel()
         return ok({"recording": False})
-
-    # --- interpreter -----------------------------------------------------------------------
-    @app.post(f"{API_PREFIX}/interpreter/translate")
-    async def translate(request: Request, body: TranslateRequest):
-        result = await svc(request).hub.translate(body.text, body.source.value, body.target.value)
-        return ok({"source": body.source.value, "target": body.target.value, "original": body.text, **result})
 
     # --- history -------------------------------------------------------------------------
     @app.get(f"{API_PREFIX}/history")

@@ -3,9 +3,6 @@
   "ok": true,
   "data": {
     "onboarding_complete": false,
-    "language": "en",
-    "interpreter_source": "en",
-    "interpreter_target": "yo",
     "cloud_consent": false,
     "require_approval": true,
     "allow_send_without_approval": false,
@@ -15,7 +12,7 @@
     ],
     "stt_provider": "gemini",
     "llm_provider": "gemini",
-    "fallback_consent": false,
+    "fallback_consent": true,
     "stt_model": null,
     "llm_model": null,
     "daily_request_budget": 500,

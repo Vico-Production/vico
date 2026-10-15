@@ -90,9 +90,11 @@ async def test_rate_limit_blocks_next_request_until_retry_after():
     p = groq(handler, llm_model="m")
     with pytest.raises(VicoError):
         await p.complete("s", "u", json_mode=False)
+    first = len(calls)  # model list + the chosen model
     with pytest.raises(VicoError) as exc:
         await p.complete("s", "u", json_mode=False)
-    assert exc.value.code == "rate_limited" and len(calls) == 1
+    assert exc.value.code == "rate_limited" and exc.value.retry_after_s > 20
+    assert len(calls) == first  # the resting model is not called again
 
 
 async def test_timeout_and_offline_mapping():

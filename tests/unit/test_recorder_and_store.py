@@ -97,10 +97,10 @@ def test_settings_round_trip(isolated_data_dir):
     db = Database(isolated_data_dir / "t.db")
     repo = SettingsRepository(db)
     assert repo.load().require_approval is True
-    repo.update(SettingsPatch(require_approval=False, language="yo"))
+    repo.update(SettingsPatch(require_approval=False, max_steps=5))
     reopened = SettingsRepository(Database(isolated_data_dir / "t.db"))
     s = reopened.load()
-    assert s.require_approval is False and s.language == "yo"
+    assert s.require_approval is False and s.max_steps == 5
 
 
 def test_history_add_list_clear(isolated_data_dir):

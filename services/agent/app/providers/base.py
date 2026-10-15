@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -162,6 +163,73 @@ async def send(client: httpx.AsyncClient, provider: str, quota: QuotaTracker, re
         return response.json()
     except json.JSONDecodeError as exc:
         raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, f"{provider} sent an unreadable reply.", status=502) from exc
+
+
+_LANGUAGE_ALIASES = {
+    "en": "en", "english": "en", "yo": "yo", "yoruba": "yo", "ha": "ha", "hausa": "ha",
+    "ig": "ig", "igbo": "ig", "pcm": "pcm", "pidgin": "pcm", "nigerian pidgin": "pcm",
+}
+
+
+def normalize_language(value: Any) -> str | None:
+    """Map a provider's language label ('yoruba', 'yo', ...) to a Vico language code."""
+    if not isinstance(value, str):
+        return None
+    return _LANGUAGE_ALIASES.get(value.strip().lower())
+
+
+UNLIMITED = 10**9  # per-model trackers; Vico's own daily budget lives on the provider tracker
+T = TypeVar("T")
+
+
+class ModelChain:
+    """Per-model cooldowns. On a rate limit the same request moves to the next model at
+    once, and a resting model is skipped without any network call, so switching is
+    instant. Only when every model is resting does the caller see RATE_LIMITED."""
+
+    def __init__(self, provider: str, budget: QuotaTracker):
+        self.provider = provider
+        self.budget = budget
+        self.last_chain: list[str] = []
+        self._trackers: dict[str, QuotaTracker] = {}
+
+    def tracker(self, model: str) -> QuotaTracker:
+        if model not in self._trackers:
+            self._trackers[model] = QuotaTracker(daily_budget=UNLIMITED)
+        return self._trackers[model]
+
+    def cooldowns(self) -> dict[str, float]:
+        return {m: round(t.cooldown_s(), 1) for m, t in self._trackers.items() if t.cooldown_s() > 0}
+
+    def cooldown_s(self, chain: list[str] | None = None) -> float:
+        """Seconds until any model in the chain is usable; 0 when one is ready now."""
+        chain = chain if chain is not None else self.last_chain
+        if not chain:
+            return 0.0
+        waits = [self.tracker(m).cooldown_s() for m in chain]
+        return round(min(waits), 1) if all(w > 0 for w in waits) else 0.0
+
+    async def run(self, chain: list[str], attempt: Callable[[str, QuotaTracker], Awaitable[T]],
+                  audio_seconds: float = 0.0) -> tuple[T, str]:
+        self.last_chain = chain
+        last: VicoError | None = None
+        for model in chain:
+            tracker = self.tracker(model)
+            if tracker.cooldown_s() > 0:
+                continue
+            self.budget.check(self.provider)
+            try:
+                result = await attempt(model, tracker)
+            except VicoError as exc:
+                if exc.code is ErrorCode.RATE_LIMITED:
+                    last = exc
+                    continue
+                raise
+            self.budget.record(audio_seconds)
+            return result, model
+        wait = self.cooldown_s(chain) or (last.retry_after_s if last else None) or 20.0
+        message = last.message if last else f"Your {self.provider} key is cooling down for {wait:.0f}s."
+        raise VicoError(ErrorCode.RATE_LIMITED, message, retryable=True, retry_after_s=wait, status=429)
 
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)

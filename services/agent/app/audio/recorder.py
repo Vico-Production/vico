@@ -75,7 +75,7 @@ class Recorder:
         self._chunks: list[bytes] = []
         self._bytes = 0
         self._started = 0.0
-        self.language = "en"
+        self.language: str | None = None
         self.level = 0.0
 
     @property
@@ -95,7 +95,7 @@ class Recorder:
             self._bytes += len(data)
             self.level = rms_level(data)
 
-    def start(self, language: str) -> None:
+    def start(self, language: str | None) -> None:
         with self._lock:
             if self._stream is not None:
                 raise VicoError(ErrorCode.CONFLICT, "Already recording.", status=409)

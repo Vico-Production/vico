@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import Field
 
 from app.config import DEFAULT_MAX_STEPS, default_workspace
-from app.contracts import Language, StrictModel
+from app.contracts import StrictModel
 from app.store.db import Database
 
 ProviderName = Literal["groq", "gemini", "none"]
@@ -16,9 +16,6 @@ ProviderName = Literal["groq", "gemini", "none"]
 
 class Settings(StrictModel):
     onboarding_complete: bool = False
-    language: Language = Language.EN
-    interpreter_source: Language = Language.EN
-    interpreter_target: Language = Language.YO
     # The user accepted the disclosure that audio/text go to the configured cloud provider.
     cloud_consent: bool = False
     # Approval switch: on by default. Off lets ordinary steps run without asking.
@@ -29,8 +26,9 @@ class Settings(StrictModel):
     allowed_roots: list[str] = Field(default_factory=lambda: ["~"])
     stt_provider: ProviderName = "gemini"
     llm_provider: ProviderName = "gemini"
-    # A second provider is used only when it is configured and this consent is given.
-    fallback_consent: bool = False
+    # When the first provider's free models are all resting, use the other provider's key
+    # (only if the user added one). Disclosed when the key is added.
+    fallback_consent: bool = True
     stt_model: str | None = None
     llm_model: str | None = None
     daily_request_budget: int = Field(default=500, ge=1, le=100_000)
@@ -40,9 +38,6 @@ class Settings(StrictModel):
 
 class SettingsPatch(StrictModel):
     onboarding_complete: bool | None = None
-    language: Language | None = None
-    interpreter_source: Language | None = None
-    interpreter_target: Language | None = None
     cloud_consent: bool | None = None
     require_approval: bool | None = None
     allow_send_without_approval: bool | None = None

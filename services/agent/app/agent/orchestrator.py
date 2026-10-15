@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from app.agent import policy
+from app.agent.language import guess_language
 from app.agent.offline_parser import OFFLINE_HELP, parse_offline
 from app.agent.prompts import PLANNER_SYSTEM, planner_user_prompt
 from app.agent.schemas import ClarifyPlan, DonePlan, Plan, ToolCallPlan, UnsupportedPlan, parse_plan
@@ -35,6 +36,7 @@ from app.tools.base import ToolContext, ToolRegistry, ToolResult
 log = logging.getLogger(__name__)
 T = TypeVar("T")
 MAX_FAILED_STEPS = 3
+AUTO = "auto"  # language not given: detected from the request
 # Short rate limits (per-minute) are waited out and the task continues; longer ones
 # (the daily free quota) stop the task with a clear message.
 MAX_COOLDOWN_WAIT_S = 120
@@ -149,16 +151,17 @@ class Orchestrator:
         self.runs: dict[str, Run] = {}
 
     # --- public API ----------------------------------------------------------------------
-    def start(self, text: str, language: str, original: str | None = None) -> Run:
+    def start(self, text: str, language: str | None = None, original: str | None = None) -> Run:
         text = text.strip()
         if not text:
             raise VicoError(ErrorCode.VALIDATION_ERROR, "Say or type what you want Vico to do.")
         if len(text) > MAX_TEXT_INPUT_CHARS:
             raise VicoError(ErrorCode.VALIDATION_ERROR, f"Requests are limited to {MAX_TEXT_INPUT_CHARS} characters.")
-        Language(language)
+        if language is not None:
+            Language(language)
         if any(r.state not in TERMINAL_STATES for r in self.runs.values()):
             raise VicoError(ErrorCode.CONFLICT, "Another task is still running. Finish or cancel it first.", status=409)
-        run = Run(id=uuid.uuid4().hex[:12], text=text, language=language, original=original or text)
+        run = Run(id=uuid.uuid4().hex[:12], text=text, language=language or AUTO, original=original or text)
         run.set_state(RunState.NORMALIZING, "Heard")
         self.runs[run.id] = run
         self._trim()
@@ -287,6 +290,8 @@ class Orchestrator:
     # --- offline -------------------------------------------------------------------------
     async def _offline(self, run: Run, ctx: ToolContext) -> None:
         run.canonical = run.text
+        if run.language == AUTO:
+            run.language = Language.EN.value
         plan = parse_offline(run.text)
         if plan is None:
             self._fail(run, ErrorCode.OFFLINE, OFFLINE_HELP)
@@ -303,11 +308,19 @@ class Orchestrator:
 
     # --- cloud ---------------------------------------------------------------------------
     async def _cloud(self, run: Run, ctx: ToolContext, settings: Settings) -> None:
-        if run.language != Language.EN:
+        if run.language == AUTO:
+            guess = guess_language(run.text)
+            if guess == Language.EN:
+                run.language, run.canonical = Language.EN.value, run.text
+            else:
+                understood = await self._cloud_call(run, lambda: self.hub.understand(run.text))
+                run.language, run.canonical = understood["language"], understood["english"]
+        elif run.language != Language.EN:
             translated = await self._cloud_call(run, lambda: self.hub.translate(run.text, run.language, "en"))
             run.canonical = translated["text"]
         else:
             run.canonical = run.text
+        ctx.language = run.language
         run.timeline.append({"state": "understood", "at": _now(), "note": run.canonical})
 
         failures = 0
