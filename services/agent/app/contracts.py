@@ -39,6 +39,8 @@ class RunState(StrEnum):
     VALIDATING = "validating"
     AWAITING_APPROVAL = "awaiting_approval"
     AWAITING_CLARIFICATION = "awaiting_clarification"
+    # Every free model is rate-limited for a short while; the task resumes by itself.
+    COOLING_DOWN = "cooling_down"
     EXECUTING = "executing"
     VERIFYING = "verifying"
     COMPLETED = "completed"
@@ -123,7 +125,7 @@ class VicoError(Exception):
         status: int = 400,
     ):
         super().__init__(message)
-        self.code = code
+        self.code = ErrorCode(code)
         self.message = message
         self.retryable = retryable
         self.retry_after_s = retry_after_s

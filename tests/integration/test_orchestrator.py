@@ -33,7 +33,7 @@ def make(roots, platform, monkeypatch):
     def factory(provider=None, online=True, **settings):
         root, ws = roots
         services = build_services(secrets=SecretStore(MemorySecretBackend()),
-                                  hub_overrides={"groq": provider} if provider else {},
+                                  hub_overrides={"gemini": provider} if provider else {},
                                   platform=platform, approval_timeout_s=2)
         services.settings.update(SettingsPatch(workspace=str(ws), allowed_roots=[str(root)], cloud_consent=True,
                                                **settings))
@@ -214,6 +214,27 @@ async def test_offline_typed_commands(make, roots):
     run = s.orchestrator.start("tell me a joke", "en")
     await wait_for(run, RunState.FAILED)
     assert "create folder" in run.message
+
+
+async def test_short_cooldown_is_waited_out_and_the_task_continues(make, roots):
+    _, ws = roots
+    replies = [VicoError("rate_limited", "cooling", retryable=True, retry_after_s=0.3),
+               call("create_folder", path="AfterCooldown"), {"kind": "done", "message": "ok"}]
+    s = make(MockProvider(replies=replies), require_approval=False)
+    run = s.orchestrator.start("make folder", "en")
+    await wait_for(run, RunState.COOLING_DOWN)
+    assert run.cooldown_until is not None
+    await wait_for(run, RunState.COMPLETED)
+    assert (ws / "AfterCooldown").is_dir() and run.cooldown_until is None
+    assert "cooling_down" in [t["state"] for t in run.timeline]
+
+
+async def test_daily_limit_stops_with_a_clear_message(make):
+    s = make(MockProvider(replies=[VicoError("rate_limited", "Today's free gemini limit is used up.",
+                                             retry_after_s=8 * 3600)]))
+    run = s.orchestrator.start("make folder", "en")
+    await wait_for(run, RunState.FAILED)
+    assert "used up" in run.message and run.steps == []
 
 
 async def test_only_one_active_run(make):

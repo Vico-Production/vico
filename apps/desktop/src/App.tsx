@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AgentPanel } from "./components/AgentPanel";
+import { CooldownChip } from "./components/Cooldown";
 import { Notice } from "./components/common";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { InterpreterPanel } from "./components/InterpreterPanel";
@@ -10,6 +11,10 @@ import type { Health, LanguageCapability, Settings } from "./lib/contracts";
 import { useInterval } from "./lib/hooks";
 
 type Mode = "agent" | "interpreter";
+
+function cooldownOf(health: Health): number {
+  return Math.max(...Object.values(health.providers).map((p) => p.cooldown_s ?? 0));
+}
 
 function StatusBadge({ health, error }: { health: Health | null; error: string | null }) {
   let label = "Starting…";
@@ -124,6 +129,7 @@ export default function App() {
         </nav>
         <div className="topbar-right">
           <StatusBadge health={health} error={healthError} />
+          {health && cooldownOf(health) > 0 && <CooldownChip key={Math.round(cooldownOf(health))} seconds={cooldownOf(health)} />}
           <span className={`approval-pill ${settings.require_approval ? "on" : "off"}`} title="Change in Settings">
             {settings.require_approval ? "Approval on" : "Approval off"}
           </span>

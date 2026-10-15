@@ -27,8 +27,8 @@ class Settings(StrictModel):
     allow_send_without_approval: bool = False
     workspace: str = Field(default_factory=lambda: str(default_workspace()))
     allowed_roots: list[str] = Field(default_factory=lambda: ["~"])
-    stt_provider: ProviderName = "groq"
-    llm_provider: ProviderName = "groq"
+    stt_provider: ProviderName = "gemini"
+    llm_provider: ProviderName = "gemini"
     # A second provider is used only when it is configured and this consent is given.
     fallback_consent: bool = False
     stt_model: str | None = None

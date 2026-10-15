@@ -13,8 +13,8 @@ const settings: Settings = {
   allow_send_without_approval: false,
   workspace: "C:/Users/demo/Documents/VicoDemo",
   allowed_roots: ["~"],
-  stt_provider: "groq",
-  llm_provider: "groq",
+  stt_provider: "gemini",
+  llm_provider: "gemini",
   fallback_consent: false,
   stt_model: null,
   llm_model: null,
@@ -23,7 +23,7 @@ const settings: Settings = {
   browser_channel: "auto",
 };
 
-const provider = { status: "ready" as const, configured: true, requests_today: 0, daily_budget: 500, audio_seconds_today: 0, rate_limited: false };
+const provider = { status: "ready" as const, configured: true, requests_today: 0, daily_budget: 500, audio_seconds_today: 0, rate_limited: false, cooldown_s: 0 };
 
 function health(online = true): Health {
   return {
@@ -46,7 +46,7 @@ function run(over: Partial<Run> = {}): Run {
   return {
     id: "r1", state: "awaiting_approval", mode: "cloud", language: "en", text: "make Demo", original: "make Demo",
     canonical: "make Demo", steps: [step()], pending_step_id: "s1", question: null, message: null,
-    message_localized: null, error: null, timeline: [], ...over,
+    message_localized: null, error: null, cooldown_until: null, timeline: [], ...over,
   };
 }
 
@@ -146,6 +146,28 @@ describe("Agent Mode", () => {
     render(<App />);
     expect(await screen.findByText(/did not start/)).toBeInTheDocument();
     expect(screen.getByText("Try again")).toBeInTheDocument();
+  });
+});
+
+describe("Cooldown", () => {
+  it("shows a countdown while the key cools and the task waits", async () => {
+    const until = new Date(Date.now() + 30_000).toISOString();
+    const cooling = run({ state: "cooling_down", steps: [], pending_step_id: null, cooldown_until: until });
+    serve((c) =>
+      baseRoutes(c, (call) => {
+        if (call.path === "/health") {
+          const h = health();
+          return { ...h, providers: { ...h.providers, gemini: { ...h.providers.gemini, cooldown_s: 30 } } };
+        }
+        return call.path.startsWith("/agent/runs") ? cooling : undefined;
+      }),
+    );
+    render(<App />);
+    fireEvent.change(await screen.findByTestId("request-input"), { target: { value: "long task" } });
+    fireEvent.click(screen.getByTestId("run-button"));
+    expect(await screen.findByTestId("cooldown-notice")).toHaveTextContent(/cooling down · 0:(29|30)/);
+    expect(screen.getByTestId("cooldown-notice")).toHaveTextContent("carry on automatically");
+    expect(await screen.findByTestId("cooldown-chip")).toHaveTextContent("Key cooling");
   });
 });
 

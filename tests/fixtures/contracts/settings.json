@@ -13,8 +13,8 @@
     "allowed_roots": [
       "~"
     ],
-    "stt_provider": "groq",
-    "llm_provider": "groq",
+    "stt_provider": "gemini",
+    "llm_provider": "gemini",
     "fallback_consent": false,
     "stt_model": null,
     "llm_model": null,

@@ -154,9 +154,14 @@ class ProviderHub:
         for name in PROVIDERS:
             configured = self.configured(name)
             state = provider_status(configured, self.quotas[name])
+            provider = self._cache.get(name, (None, None))[1] or self.overrides.get(name)
+            cooldown = float(provider.cooldown_s()) if provider is not None and hasattr(provider, "cooldown_s") else 0.0
+            if cooldown > 0:
+                state = ProviderStatus.RATE_LIMITED
             if not s.cloud_consent and configured:
                 state = ProviderStatus.DISABLED
-            out[name] = {"status": state.value, "configured": configured, **self.quotas[name].status()}
+            out[name] = {"status": state.value, "configured": configured, **self.quotas[name].status(),
+                         "cooldown_s": cooldown}
         return out
 
     async def aclose(self) -> None:

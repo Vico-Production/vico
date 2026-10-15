@@ -16,7 +16,8 @@
         "requests_today": 3,
         "daily_budget": 500,
         "audio_seconds_today": 12.5,
-        "rate_limited": false
+        "rate_limited": false,
+        "cooldown_s": 0.0
       },
       "gemini": {
         "status": "ready",
@@ -24,7 +25,8 @@
         "requests_today": 3,
         "daily_budget": 500,
         "audio_seconds_today": 12.5,
-        "rate_limited": false
+        "rate_limited": false,
+        "cooldown_s": 0.0
       }
     },
     "recording": false,

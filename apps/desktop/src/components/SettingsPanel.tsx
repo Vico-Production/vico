@@ -5,18 +5,18 @@ import { Drawer, Notice, Toggle } from "./common";
 
 const PROVIDERS = [
   {
-    id: "groq",
-    name: "GroqCloud",
-    keyUrl: "https://console.groq.com/keys",
-    privacy: "https://groq.com/privacy-policy/",
-    note: "Free plan with rate limits. Speech-to-text (Whisper) and chat models.",
-  },
-  {
     id: "gemini",
     name: "Google Gemini API",
     keyUrl: "https://aistudio.google.com/apikey",
     privacy: "https://ai.google.dev/gemini-api/terms",
-    note: "Free tier on some models; Google may use free-tier data to improve products. Check the terms.",
+    note: "Recommended. Does both speech and thinking. Free daily limits apply; Vico switches between free Flash models automatically.",
+  },
+  {
+    id: "groq",
+    name: "GroqCloud",
+    keyUrl: "https://console.groq.com/keys",
+    privacy: "https://groq.com/privacy-policy/",
+    note: "Optional backup. Free plan with rate limits.",
   },
 ] as const;
 
@@ -225,8 +225,8 @@ function RoleSelect({ label, value, onChange }: { label: string; value: Provider
     <label className="field">
       <span>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value as ProviderName)}>
-        <option value="groq">GroqCloud</option>
         <option value="gemini">Google Gemini</option>
+        <option value="groq">GroqCloud</option>
         <option value="none">None (offline only)</option>
       </select>
     </label>

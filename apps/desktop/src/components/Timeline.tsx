@@ -7,6 +7,7 @@ const STAGE_INDEX: Record<RunState, number> = {
   normalizing: 0,
   planning: 1,
   awaiting_clarification: 1,
+  cooling_down: 1,
   validating: 2,
   awaiting_approval: 2,
   executing: 4,

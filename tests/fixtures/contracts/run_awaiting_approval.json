@@ -37,6 +37,7 @@
     "message": null,
     "message_localized": null,
     "error": null,
+    "cooldown_until": null,
     "timeline": [
       {
         "state": "normalizing",

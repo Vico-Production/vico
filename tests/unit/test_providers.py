@@ -178,12 +178,12 @@ async def test_hub_without_provider():
 async def test_hub_fallback_only_with_consent():
     failing = MockProvider(replies=[VicoError("offline", "down")] * 3)
     backup = MockProvider(replies=["{\"translation\": \"Hi\"}"] * 2)
-    hub = make_hub(Settings(cloud_consent=True, fallback_consent=False),
+    hub = make_hub(Settings(cloud_consent=True, fallback_consent=False, llm_provider="groq"),
                    overrides={"groq": failing, "gemini": backup})
     with pytest.raises(VicoError):
         await hub.complete("s", "u")
     assert backup.calls == []
-    hub = make_hub(Settings(cloud_consent=True, fallback_consent=True),
+    hub = make_hub(Settings(cloud_consent=True, fallback_consent=True, llm_provider="groq"),
                    overrides={"groq": failing, "gemini": backup})
     result = await hub.translate("Bawo", "yo", "en")
     assert result["text"] == "Hi"
@@ -192,7 +192,7 @@ async def test_hub_fallback_only_with_consent():
 async def test_hub_does_not_fall_back_on_auth_errors():
     failing = MockProvider(replies=[VicoError("provider_auth", "bad key")])
     backup = MockProvider()
-    hub = make_hub(Settings(cloud_consent=True, fallback_consent=True), overrides={"groq": failing, "gemini": backup})
+    hub = make_hub(Settings(cloud_consent=True, fallback_consent=True, llm_provider="groq"), overrides={"groq": failing, "gemini": backup})
     with pytest.raises(VicoError) as exc:
         await hub.complete("s", "u")
     assert exc.value.code == "provider_auth" and backup.calls == []

@@ -15,7 +15,7 @@ export function Onboarding({
   const [step, setStep] = useState(0);
   const [language, setLanguage] = useState<Language>(settings.language);
   const [consent, setConsent] = useState(settings.cloud_consent);
-  const [groqKey, setGroqKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
   const [workspace, setWorkspace] = useState(settings.workspace);
   const [approval, setApproval] = useState(settings.require_approval);
   const [check, setCheck] = useState<Health | null>(null);
@@ -24,7 +24,7 @@ export function Onboarding({
   const finish = async () => {
     setError(null);
     try {
-      if (groqKey.trim()) await api.saveSecret("groq", groqKey.trim());
+      if (geminiKey.trim()) await api.saveSecret("gemini", geminiKey.trim());
       await onDone({ language, cloud_consent: consent, workspace, require_approval: approval, onboarding_complete: true });
     } catch (err) {
       setError(errorMessage(err));
@@ -34,7 +34,7 @@ export function Onboarding({
   const selfCheck = async () => {
     setError(null);
     try {
-      if (groqKey.trim()) await api.saveSecret("groq", groqKey.trim());
+      if (geminiKey.trim()) await api.saveSecret("gemini", geminiKey.trim());
       await api.updateSettings({ cloud_consent: consent, workspace });
       setCheck(await api.health());
     } catch (err) {
@@ -68,17 +68,32 @@ export function Onboarding({
         understands simple typed English commands such as <code>create folder Demo</code>.
       </p>
       <Toggle label="Allow cloud processing" checked={consent} onChange={setConsent} testId="onboard-consent" />
-      <label className="field">
-        <span>
-          Free GroqCloud API key (optional now; get one at{" "}
-          <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">
-            console.groq.com/keys
-          </a>
-          , no card needed)
-        </span>
-        <input type="password" autoComplete="off" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} />
-      </label>
-      <p className="muted small">Keys are stored in the Windows Credential Manager (or your system keyring), never in Vico's files.</p>
+      <div className="field">
+        <span>Your free Gemini access code (you can also add it later in Settings)</span>
+        <ol className="plain">
+          <li>
+            Open{" "}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+              Google AI Studio
+            </a>{" "}
+            and sign in with your Google account.
+          </li>
+          <li>Press "Create API key" and copy it. It is free and needs no card.</li>
+          <li>Paste it below.</li>
+        </ol>
+        <input
+          type="password"
+          autoComplete="off"
+          aria-label="Gemini access code"
+          placeholder="Paste your Gemini access code"
+          value={geminiKey}
+          onChange={(e) => setGeminiKey(e.target.value)}
+        />
+      </div>
+      <p className="muted small">
+        The code is stored in the Windows Credential Manager (or your system keyring), never in Vico's files. Google may
+        use free-tier requests to improve its products.
+      </p>
     </div>,
     <div key="workspace">
       <h2>Workspace and approval</h2>

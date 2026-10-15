@@ -441,6 +441,41 @@ textarea {
   background: var(--danger);
 }
 
+.status.cooling {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.cooldown {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--warn);
+  background: var(--warn-soft);
+}
+
+.cooldown small {
+  display: block;
+  color: var(--muted);
+}
+
+.cool-ring .track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 3;
+}
+
+.cool-ring .fill {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s linear;
+}
+
 .approval-pill {
   font-size: 0.8em;
   padding: 3px 8px;

@@ -19,7 +19,7 @@ def client(roots, platform, monkeypatch):
         {"kind": "tool_call", "tool": "create_folder", "arguments": {"path": "ApiDemo"}, "explanation": "x"},
         {"kind": "done", "message": "Made it."},
     ])
-    services = build_services(secrets=SecretStore(MemorySecretBackend()), hub_overrides={"groq": provider},
+    services = build_services(secrets=SecretStore(MemorySecretBackend()), hub_overrides={"gemini": provider},
                               platform=platform)
     services.settings.update(SettingsPatch(workspace=str(ws), allowed_roots=[str(root)], cloud_consent=True))
 

@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { LANGUAGE_NAMES, TERMINAL_STATES, type Health, type Language, type LanguageCapability, type Settings } from "../lib/contracts";
 import { useRecorder, useRun } from "../lib/hooks";
 import { ActionPreview } from "./ActionPreview";
+import { CooldownNotice } from "./Cooldown";
 import { LanguagePicker, Notice } from "./common";
 import { MicControl } from "./MicControl";
 import { StepList } from "./StepList";
@@ -157,6 +158,7 @@ export function AgentPanel({
               Understood as: <em>{run.canonical}</em>
             </p>
           )}
+          {run.state === "cooling_down" && run.cooldown_until && <CooldownNotice until={run.cooldown_until} />}
           {pending && (
             <ActionPreview step={pending} busy={busy} onApprove={(c) => decide(true, c)} onReject={() => decide(false)} />
           )}

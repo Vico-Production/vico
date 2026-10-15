@@ -8,12 +8,13 @@ step goes through preflight and, where required, the user's approval.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import time
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from app.agent import policy
@@ -34,6 +35,9 @@ from app.tools.base import ToolContext, ToolRegistry, ToolResult
 log = logging.getLogger(__name__)
 T = TypeVar("T")
 MAX_FAILED_STEPS = 3
+# Short rate limits (per-minute) are waited out and the task continues; longer ones
+# (the daily free quota) stop the task with a clear message.
+MAX_COOLDOWN_WAIT_S = 120
 MAX_RUNS_KEPT = 20
 SLOW_TOOLS = {"browser_open", "browser_click", "browser_type", "browser_read", "run_command", "summarize_document",
               "find_files", "open_app", "open_file"}
@@ -100,6 +104,7 @@ class Run:
     message: str | None = None
     message_localized: str | None = None
     error: dict[str, Any] | None = None
+    cooldown_until: str | None = None
     timeline: list[dict[str, str]] = field(default_factory=list)
     clarifications: list[dict[str, str]] = field(default_factory=list)
     cancel: asyncio.Event = field(default_factory=asyncio.Event)
@@ -126,7 +131,7 @@ class Run:
             "steps": [s.public() for s in self.steps],
             "pending_step_id": pending.id if pending else None,
             "question": self.question, "message": self.message, "message_localized": self.message_localized,
-            "error": self.error, "timeline": self.timeline,
+            "error": self.error, "cooldown_until": self.cooldown_until, "timeline": self.timeline,
         }
 
 
@@ -251,6 +256,25 @@ class Orchestrator:
         cancel.cancel()
         return task.result()
 
+    async def _cloud_call(self, run: Run, call: Callable[[], Awaitable[T]]) -> T:
+        """Run a cloud call; if every free model is briefly rate-limited, show a cooldown and retry."""
+        while True:
+            try:
+                return await self._until(run, call())
+            except VicoError as exc:
+                wait = exc.retry_after_s
+                if exc.code is not ErrorCode.RATE_LIMITED or wait is None or wait > MAX_COOLDOWN_WAIT_S:
+                    raise
+                previous = run.state
+                until = datetime.now(UTC) + timedelta(seconds=wait)
+                run.cooldown_until = until.isoformat(timespec="seconds")
+                run.set_state(RunState.COOLING_DOWN, f"{wait:.0f}s")
+                try:
+                    await self._until(run, asyncio.sleep(wait + 0.5))
+                finally:
+                    run.cooldown_until = None
+                run.set_state(previous)
+
     async def _wait_decision(self, run: Run) -> dict[str, Any] | None:
         run.decision = None
         run.decision_event.clear()
@@ -280,7 +304,7 @@ class Orchestrator:
     # --- cloud ---------------------------------------------------------------------------
     async def _cloud(self, run: Run, ctx: ToolContext, settings: Settings) -> None:
         if run.language != Language.EN:
-            translated = await self._until(run, self.hub.translate(run.text, run.language, "en"))
+            translated = await self._cloud_call(run, lambda: self.hub.translate(run.text, run.language, "en"))
             run.canonical = translated["text"]
         else:
             run.canonical = run.text
@@ -342,7 +366,7 @@ class Orchestrator:
         for attempt in range(2):
             text = prompt if attempt == 0 else (
                 prompt + f"\n\nYour previous reply was rejected: {last_error}. Reply with valid JSON only.")
-            completion = await self._until(run, self.hub.complete(PLANNER_SYSTEM, text, json_mode=True))
+            completion = await self._cloud_call(run, functools.partial(self.hub.complete, PLANNER_SYSTEM, text, json_mode=True))
             try:
                 return parse_plan(parse_json_text(completion.text))
             except (ValueError, VicoError) as exc:
@@ -353,7 +377,7 @@ class Orchestrator:
         if run.language == Language.EN or not run.message:
             return
         try:
-            result = await self._until(run, self.hub.translate(run.message, "en", run.language))
+            result = await self._until(run, self.hub.translate(run.message or "", "en", run.language))
             run.message_localized = result["text"]
         except VicoError:
             run.message_localized = None

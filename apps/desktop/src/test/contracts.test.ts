@@ -8,7 +8,8 @@ const load = (name: string) => JSON.parse(readFileSync(join(DIR, name), "utf-8")
 // Record<keyof T, true> fails to compile if a key is added to or removed from the type.
 const RUN_KEYS: Record<keyof Run, true> = {
   id: true, state: true, mode: true, language: true, text: true, original: true, canonical: true, steps: true,
-  pending_step_id: true, question: true, message: true, message_localized: true, error: true, timeline: true,
+  pending_step_id: true, question: true, message: true, message_localized: true, error: true, cooldown_until: true,
+  timeline: true,
 };
 const STEP_KEYS: Record<keyof Step, true> = {
   id: true, tool: true, arguments: true, explanation: true, effect: true, targets: true, outcome: true, reason: true,

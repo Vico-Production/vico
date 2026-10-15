@@ -6,8 +6,9 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -78,6 +79,9 @@ class QuotaTracker:
     def limited(self, retry_after: float) -> None:
         self.rate_limited_until = time.monotonic() + retry_after
 
+    def cooldown_s(self) -> float:
+        return max(0.0, self.rate_limited_until - time.monotonic())
+
     def _roll(self) -> None:
         today = date.today()
         if today != self.day:
@@ -90,8 +94,35 @@ class QuotaTracker:
                 "rate_limited": time.monotonic() < self.rate_limited_until}
 
 
+_RETRY_DELAY = re.compile(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"')
+PACIFIC = "America/Los_Angeles"
+
+
+def seconds_until_quota_reset(now: datetime | None = None) -> float:
+    """Gemini's daily quotas reset at midnight Pacific time."""
+    tz = ZoneInfo(PACIFIC)
+    now = (now or datetime.now(UTC)).astimezone(tz)
+    reset = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tz)
+    return max(60.0, (reset - now).total_seconds())
+
+
+def local_reset_time() -> str:
+    """The next quota reset in the computer's local time, e.g. '8:00 am'."""
+    when = datetime.now().astimezone() + timedelta(seconds=seconds_until_quota_reset())
+    return when.strftime("%I:%M %p").lstrip("0").lower()
+
+
+def is_daily_limit(response: httpx.Response) -> bool:
+    return "PerDay" in response.text
+
+
 def _retry_after(response: httpx.Response) -> float:
+    if is_daily_limit(response):
+        return seconds_until_quota_reset()
     value = response.headers.get("retry-after")
+    if not value:
+        match = _RETRY_DELAY.search(response.text)
+        value = match.group(1) if match else None
     try:
         return max(1.0, float(value)) if value else 20.0
     except ValueError:
@@ -116,8 +147,11 @@ async def send(client: httpx.AsyncClient, provider: str, quota: QuotaTracker, re
     if response.status_code == 429:
         wait = _retry_after(response)
         quota.limited(wait)
-        raise VicoError(ErrorCode.RATE_LIMITED, f"{provider} free-tier limit reached; try again in {wait:.0f}s.",
-                        retryable=True, retry_after_s=wait, status=429)
+        if is_daily_limit(response):
+            message = f"Today's free {provider} limit is used up. It resets at about {local_reset_time()}."
+        else:
+            message = f"{provider} free-tier limit reached; cooling down for {wait:.0f}s."
+        raise VicoError(ErrorCode.RATE_LIMITED, message, retryable=True, retry_after_s=round(wait, 1), status=429)
     if response.status_code >= 400:
         detail = redact_text(response.text[:300])
         quota.last_error = f"http {response.status_code}"

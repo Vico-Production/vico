@@ -5,7 +5,7 @@
 - **Agent Mode** — say or type what you want ("create a folder called Hackathon", "open bbc.com and read me the top headline", "find my project notes and open them") and Vico does it on your computer: files, apps, windows, the web browser and shell commands. Every step shows its exact effect first and waits for your approval, unless you switch approval off.
 - **Interpreter Mode** — turn-based translation between two people, with the original and translated text side by side and spoken output where your computer has a voice for that language.
 
-Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on free-tier cloud APIs; everything that touches your computer runs locally. No paid service is required.
+Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on Google Gemini's free tier, using one free key per user; everything that touches your computer runs locally. No paid service is required.
 
 > **Status:** hackathon build (v0.1.0). Language accuracy, memory use on 4 GB machines, and speech quality for Yoruba, Hausa and Igbo have **not been measured yet**. See [What is verified](#what-is-verified).
 
@@ -44,6 +44,10 @@ flowchart LR
 
 Other protections: paths are resolved and checked against the folders you allow (default: your home folder), system folders are write-protected, file and web text is passed to the AI as untrusted data, at most one step per approval, a step limit per task, and Cancel works at any point. The browser Vico controls uses its own profile, separate from your everyday browser.
 
+## Free Gemini limits
+
+Gemini's free tier limits requests per minute and per day (the daily limit resets at midnight Pacific time, about 8–9 am in Nigeria). Vico sends requests to Gemini 3.6 Flash first and, the moment it is rate-limited, moves the same request to Gemini 3.5 Flash-Lite, so a long task keeps going without the user noticing. If both are briefly limited, Vico shows a "key cooling" countdown and resumes the task by itself. If the daily limit is used up, it stops and says when it resets. Each user's key has its own limits.
+
 ## Install (users)
 
 Download the installer for your system from the project's Releases page:
@@ -51,7 +55,7 @@ Download the installer for your system from the project's Releases page:
 - **Windows:** `Vico_x.y.z_x64-setup.exe` (or `.msi`). WebView2 is installed automatically if missing.
 - **Linux:** `.deb` (Debian/Ubuntu), `.rpm` (Fedora) or `.AppImage`. Desktop control (typing into other apps) needs an X11 session with `xdotool` and `wmctrl`; on Wayland, files, apps, browser and shell still work.
 
-On first launch Vico walks you through language, cloud consent, an optional free [GroqCloud API key](https://console.groq.com/keys) (no card required), your workspace folder, and a self-check. Without a key Vico still works offline for simple typed English commands: `create folder Demo`, `find notes`, `open notepad`, `show files`, `save note Ideas: text`.
+On first launch Vico walks you through language, cloud consent, a free [Gemini access code](https://aistudio.google.com/apikey) (no card required), your workspace folder, and a self-check. Without a key Vico still works offline for simple typed English commands: `create folder Demo`, `find notes`, `open notepad`, `show files`, `save note Ideas: text`.
 
 Browser control uses Microsoft Edge or Google Chrome if installed. Unsigned installers will trigger a Windows SmartScreen warning until code signing is set up.
 

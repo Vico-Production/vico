@@ -27,6 +27,7 @@ export type RunState =
   | "validating"
   | "awaiting_approval"
   | "awaiting_clarification"
+  | "cooling_down"
   | "executing"
   | "verifying"
   | "completed"
@@ -100,6 +101,7 @@ export interface ProviderHealth {
   daily_budget: number;
   audio_seconds_today: number;
   rate_limited: boolean;
+  cooldown_s: number;
 }
 
 export interface Health {
@@ -157,6 +159,7 @@ export interface Run {
   message: string | null;
   message_localized: string | null;
   error: { code: ErrorCode; message: string } | null;
+  cooldown_until: string | null;
   timeline: { state: string; at: string; note: string }[];
 }
 
