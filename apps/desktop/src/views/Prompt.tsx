@@ -341,7 +341,7 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
   }, [phase, session.text]);
 
   useEffect(() => {
-    if (["listening", "typing", "review", "question"].includes(phase)) input.current?.focus();
+    if (["typing", "review", "question"].includes(phase)) input.current?.focus();
   }, [phase]);
 
   useEffect(() => {
@@ -349,6 +349,13 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
       if (e.key === "Escape") {
         e.preventDefault();
         send(phase === "approval" ? { type: "reject" } : { type: "escape" });
+      } else if (phase === "listening" && e.key === "Enter") {
+        e.preventDefault();
+        send({ type: "stop-listening" });
+      } else if (phase === "listening" && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setValue(e.key);
+        send({ type: "type", text: e.key });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -373,8 +380,50 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
     return <div className="prompt empty" data-testid="prompt" />;
   }
 
-  const placeholder =
-    phase === "listening" ? "Listening…" : phase === "transcribing" ? "…" : phase === "question" ? "Your answer" : "Tell me what to do";
+  // Voice first: listening is a voice view; the keyboard is one click (or keystroke) away.
+  if (phase === "listening" || phase === "transcribing") {
+    const bars = [0.55, 0.85, 1, 0.75, 0.5];
+    return (
+      <div className={`prompt voice ${phase}`} data-testid="prompt">
+        <div className="voice-row">
+          <div className="meter" aria-hidden="true">
+            {bars.map((b, i) => (
+              <i key={i} style={{ height: `${Math.round(6 + Math.min(1, session.level * 5) * 30 * b)}px` }} />
+            ))}
+          </div>
+          <div className="voice-text">
+            <p className="voice-title" data-testid="voice-title">
+              {phase === "listening" ? "I'm listening…" : "Catching your words…"}
+            </p>
+            <p className="voice-sub">
+              {phase === "listening" ? "Take your time. I'll wait until you finish." : "One moment"}
+            </p>
+          </div>
+        </div>
+        {session.micHint && phase === "listening" && (
+          <p className="note" role="alert">
+            {session.micHint}{" "}
+            <button className="link" onClick={() => void api.openMicrophoneSettings().catch(() => undefined)}>
+              microphone settings
+            </button>
+          </p>
+        )}
+        {phase === "listening" && session.narration && !session.micHint && <p className="note">{session.narration}</p>}
+        <div className="voice-actions">
+          <button className="drop" onClick={() => send({ type: "type-instead" })} data-testid="type-instead">
+            <span>Type instead</span>
+          </button>
+          {phase === "listening" && (
+            <button className="drop allow" onClick={() => send({ type: "stop-listening" })} data-testid="done-talking">
+              <span>Done</span> <Key>⏎</Key>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const placeholder = phase === "question" ? "Your answer" : "Tell me what to do";
   return (
     <div className={`prompt ${phase}`} data-testid="prompt">
       {phase === "question" && <p className="ask">{session.question}</p>}
@@ -393,20 +442,13 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (phase === "listening") send({ type: "stop-listening" });
-            else send({ type: "submit" });
+            send({ type: "submit" });
           }
         }}
         data-testid="words"
       />
       {phase === "review" && session.reviewUntil && <div className="fuse" key={session.reviewUntil} />}
       <Hints>
-        {phase === "listening" && (
-          <>
-            Speak, or just start typing · <Key>⏎</Key> when done · <Key>esc</Key> to close
-          </>
-        )}
-        {phase === "transcribing" && <>Catching your words</>}
         {phase === "review" && (
           <>
             Going now · type to change it · <Key>esc</Key> to cancel
@@ -418,7 +460,7 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
             {session.speech && phase === "typing" && (
               <>
                 {" "}·{" "}
-                <button className="link" onClick={() => send({ type: "listen" })}>
+                <button className="link" onClick={() => send({ type: "listen" })} data-testid="talk-instead">
                   talk instead
                 </button>
               </>

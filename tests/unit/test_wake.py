@@ -76,18 +76,19 @@ def rig(tmp_path, monkeypatch):
 
 
 def test_wake_phrases():
-    assert is_wake("hey vico") and is_wake("hi vico [unk]") and is_wake("Okay  Vico")
-    assert not is_wake("hey victor") and not is_wake("vico") and not is_wake("hey [unk]")
+    assert is_wake("[unk] vico") and is_wake("vico [unk]") and is_wake("vico") and is_wake("Okay  Vico")
+    assert not is_wake("[unk] victor") and not is_wake("vehicle") and not is_wake("[unk] video [unk]")
+    assert not is_wake("vicovico") and not is_wake("")
 
 
 def test_hearing_the_phrase_starts_recording_once(rig):
     wake, recorder, wake_streams, mic_streams = rig
     wake.enable()
     assert wait_for(lambda: wake.status()["state"] == "listening")
-    wake_streams[0].callback(b"hey victor")
+    wake_streams[0].callback(b"[unk] victor")
     time.sleep(0.1)
     assert not recorder.active and not wake.claim()
-    wake_streams[0].callback(b"hey vico")
+    wake_streams[0].callback(b"vico [unk]")
     assert wait_for(lambda: recorder.active)
     assert wake_streams[0].closed and wake.status()["state"] == "paused"
     assert wake.claim() is True and wake.claim() is False  # handed over exactly once
@@ -111,7 +112,7 @@ def test_unclaimed_wake_is_dropped(rig, monkeypatch):
     wake, recorder, wake_streams, _ = rig
     wake.enable()
     assert wait_for(lambda: wake.status()["state"] == "listening")
-    wake_streams[0].callback(b"hey vico")
+    wake_streams[0].callback(b"vico [unk]")
     assert wait_for(lambda: recorder.active)
     assert wait_for(lambda: not recorder.active)  # nobody claimed it, so it stops and listens again
     assert wait_for(lambda: wake.status()["state"] == "listening")

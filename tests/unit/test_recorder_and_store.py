@@ -162,9 +162,33 @@ def test_all_microphones_dead_reports_silent(monkeypatch):
     rec.status()
     streams[1].feed(0.5, amplitude=0)
     assert rec.status()["silent"] is True
+    assert len(streams) == 3 and rec.active  # never gives up: back on the first microphone
     with pytest.raises(VicoError) as exc:
         rec.stop()
     assert exc.value.code == "mic_unavailable"
+
+
+def test_a_mic_that_sends_zeros_until_someone_speaks_still_works(monkeypatch):
+    import app.audio.recorder as recorder_module
+
+    monkeypatch.setattr(recorder_module, "PROBE_SECONDS", 0.0)
+    streams = []
+
+    def factory(cb, device=None):
+        s = FakeStream(cb)
+        streams.append(s)
+        return s
+
+    rec = Recorder(factory, devices=lambda: [None, 1])
+    rec.start(None)
+    streams[0].feed(0.5, amplitude=0)
+    rec.status()
+    streams[1].feed(0.5, amplitude=0)
+    assert rec.status()["silent"] is True
+    streams[2].feed(1.0)  # the default microphone wakes up when the user speaks
+    assert rec.status()["silent"] is False
+    wav, seconds = rec.stop()
+    assert wav and seconds >= 1.0
 
 
 def test_quiet_speech_is_raised():

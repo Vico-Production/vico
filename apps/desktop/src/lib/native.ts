@@ -32,6 +32,20 @@ async function foregroundRect(): Promise<Rect | null> {
   return invoke<Rect | null>("foreground_rect").catch(() => null);
 }
 
+/** Work-area origin and scale, to turn the engine's screen pixels into the aura's own. */
+async function auraMetrics(): Promise<{ x: number; y: number; scale: number } | null> {
+  if (!inTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<{ x: number; y: number; scale: number } | null>("aura_metrics").catch(() => null);
+}
+
+/** Let the aura catch the mouse (only while it is over Vico's handle) or let clicks through. */
+async function auraInteractive(on: boolean): Promise<void> {
+  if (!inTauri) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("aura_interactive", { on }).catch(() => undefined);
+}
+
 export interface Native {
   showAura(): Promise<void>;
   hideAura(): Promise<void>;
@@ -40,6 +54,8 @@ export interface Native {
   launchInfo?(): Promise<LaunchInfo | null>;
   placePrompt?(frame: Rect): Promise<void>;
   foregroundRect?(): Promise<Rect | null>;
+  auraMetrics?(): Promise<{ x: number; y: number; scale: number } | null>;
+  auraInteractive?(on: boolean): Promise<void>;
 }
 
 export const native: Native = {
@@ -50,4 +66,6 @@ export const native: Native = {
   launchInfo,
   placePrompt,
   foregroundRect,
+  auraMetrics,
+  auraInteractive,
 };

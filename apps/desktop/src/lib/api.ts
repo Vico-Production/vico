@@ -93,6 +93,7 @@ export const api = {
   saveSecret: (provider: string, apiKey: string) =>
     call<{ provider: string; configured: boolean }>("PUT", `/secrets/${provider}`, { api_key: apiKey }),
   reset: () => call<{ reset: boolean }>("POST", "/reset"),
+  openMicrophoneSettings: () => call<{ opened: boolean }>("POST", "/system/microphone-settings"),
   deleteSecret: (provider: string) => call<{ provider: string; configured: boolean }>("DELETE", `/secrets/${provider}`),
   models: (provider: string) => call<{ provider: string; models: string[] }>("GET", `/providers/${provider}/models`),
 

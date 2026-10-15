@@ -93,6 +93,7 @@ export interface Settings {
   voice_replies: boolean;
   wake_word: boolean;
   look: "peek" | "possession" | "yoyo";
+  spots: Partial<Record<"peek" | "yoyo" | "possession_label", number>>;
 }
 
 export interface ProviderHealth {
@@ -163,6 +164,7 @@ export interface Run {
   message_localized: string | null;
   error: { code: ErrorCode; message: string } | null;
   cooldown_until: string | null;
+  control: { action: "stay" | "go" | "move" | "greet"; where?: string } | null;
   timeline: { state: string; at: string; note: string }[];
 }
 

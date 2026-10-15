@@ -23,9 +23,12 @@ export function AuraWindow() {
       listen<null>("vico://settings", () => driver.dispatch({ type: "settings" })),
     ];
     void driver.boot();
-    return () => stops.forEach((stop) => stop());
+    return () => {
+      stops.forEach((stop) => stop());
+      driver.dispose();
+    };
   }, [driver]);
-  return <Aura session={session} />;
+  return <Aura session={session} send={(intent) => driver.dispatch(intent)} />;
 }
 
 /** Desktop prompt window: mirrors the driver's state and sends back what the user does. */
@@ -62,10 +65,13 @@ export function Stage() {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      driver.dispose();
+    };
   }, [driver]);
   const screen = { width: window.innerWidth, height: window.innerHeight };
-  const frame = promptFrame(session.look, session.phase, moodFor(session.phase), screen, session.target);
+  const frame = promptFrame(session.look, session.phase, moodFor(session.phase), screen, session.target, session.spots);
   const b = deskWindow();
   return (
     <div className="stage" data-testid="stage">
@@ -80,8 +86,8 @@ export function Stage() {
           <small>(Win + Alt + V in the desktop app)</small>
         </button>
       )}
-      <Aura session={session} />
-      <div className={`stage-prompt ${session.phase === "hidden" ? "" : "on"}`}
+      <Aura session={session} send={send} />
+      <div className={`stage-prompt ${session.phase === "hidden" || (session.followUp && session.phase === "listening") ? "" : "on"}`}
         style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}>
         <Prompt session={session} send={send} />
       </div>

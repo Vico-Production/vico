@@ -35,9 +35,14 @@ SPEECH_CHAIN = ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
 THINKING = {"stt": "minimal", "llm": "low"}
 
 TRANSCRIBE_PROMPT = (
-    "Transcribe this speech exactly as spoken. The speaker uses English, Yoruba, Hausa, Igbo or Nigerian Pidgin, "
-    "possibly mixed. Keep diacritics and tone marks, and keep English words in English. Reply with JSON "
-    '{"language": "<en|yo|ha|ig|pcm, the main language spoken>", "text": "<the transcript>"}. '
+    "Transcribe this speech exactly as spoken, in the language it was spoken in; do not translate. The speaker is "
+    "Nigerian and uses English, Yoruba, Hausa, Igbo or Nigerian Pidgin, possibly mixed with English. Decide the main "
+    "language from its grammar and core words, not from English loanwords such as app, file or website names. "
+    "Igbo is a tonal language with words such as biko, gịnị, kedu, nke, ka, m ga, ọ dị, mepee, meghee; Nigerian "
+    "Pidgin is English-based with words such as dey, wetin, abeg, una, sabi, comot, make you, go. Never label Igbo "
+    "or Yoruba as Pidgin. Write Igbo with its dotted vowels (ị, ọ, ụ), Yoruba with tone marks and dots under letters "
+    "(ẹ, ọ, ṣ), and Hausa with hooked letters (ɓ, ɗ, ƙ) where you are confident. Keep English words in English. Reply "
+    'with JSON {"language": "<en|yo|ha|ig|pcm, the main language spoken>", "text": "<the transcript>"}. '
     'If there is no speech, reply {"language": "en", "text": ""}.'
 )
 

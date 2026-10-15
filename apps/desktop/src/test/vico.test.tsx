@@ -22,6 +22,7 @@ const settings: Settings = {
   voice_replies: true,
   wake_word: true,
   look: "peek",
+  spots: {},
 };
 
 const provider = { status: "ready" as const, configured: true, requests_today: 0, daily_budget: 500,
@@ -43,7 +44,7 @@ function step(over: Partial<Step> = {}): Step {
 function run(over: Partial<Run> = {}): Run {
   return { id: "r1", state: "awaiting_approval", mode: "cloud", language: "en", text: "open notepad",
     original: "open notepad", canonical: "open notepad", steps: [step()], pending_step_id: "s1", question: null,
-    message: null, message_localized: null, error: null, cooldown_until: null, timeline: [], ...over };
+    message: null, message_localized: null, error: null, cooldown_until: null, control: null, timeline: [], ...over };
 }
 
 type Call = { method: string; path: string; body?: unknown };
@@ -221,7 +222,7 @@ describe("Vico", () => {
     expect(calls.find((c) => c.path === "/agent/runs")?.body).toEqual({ text: "Ṣí Notepad", language: null });
   });
 
-  it("typing while listening switches to typed input", async () => {
+  it("comes up listening; a keystroke or the button switches to typing", async () => {
     const calls = serve((c) =>
       base(c, (call) => {
         if (call.path === "/health") return health({ speech_ready: true });
@@ -231,10 +232,49 @@ describe("Vico", () => {
     );
     render(<Stage />);
     fireEvent.click(await screen.findByTestId("summon"));
-    const words = await screen.findByTestId("words");
+    expect(await screen.findByTestId("voice-title")).toHaveTextContent("listening");
+    expect(screen.queryByTestId("words")).toBeNull(); // voice first: no text box
     await waitFor(() => expect(calls.some((c) => c.path === "/audio/start")).toBe(true));
-    fireEvent.change(words, { target: { value: "o" } });
+    fireEvent.keyDown(window, { key: "o" });
     await waitFor(() => expect(calls.some((c) => c.path === "/audio/cancel")).toBe(true));
     expect(screen.getByTestId("prompt").className).toContain("typing");
+    expect((screen.getByTestId("words") as HTMLTextAreaElement).value).toBe("o");
+    fireEvent.click(screen.getByTestId("talk-instead"));
+    fireEvent.click(await screen.findByTestId("type-instead"));
+    expect(await screen.findByTestId("words")).toBeInTheDocument();
   });
+
+  it("answers a greeting and keeps listening for the request", async () => {
+    let since = 0;
+    let starts = 0;
+    const greeting = run({ state: "completed", steps: [], pending_step_id: null, language: "pcm",
+      message: "How far! What can I do for you?", control: { action: "greet" } });
+    const calls = serve((c) =>
+      base(c, (call) => {
+        if (call.path === "/health") return health({ speech_ready: true });
+        if (call.path === "/audio/start") {
+          starts += 1;
+          since = Date.now();
+          return { recording: true, elapsed_s: 0, max_s: 15, level: 0, full: false };
+        }
+        if (call.path === "/audio/status") {
+          const e = (Date.now() - since) / 1000;
+          return { recording: true, elapsed_s: e, max_s: 15, level: starts === 1 && e < 0.5 ? 0.5 : 0.01, full: false };
+        }
+        if (call.path === "/audio/stop") {
+          return { seconds: 1, transcript: { text: "how far", language: "pcm", provider: "gemini", model: "m",
+            latency_ms: 300, confidence: null } };
+        }
+        if (call.path.startsWith("/agent/runs")) return greeting;
+        return undefined;
+      }),
+    );
+    render(<Stage />);
+    fireEvent.click(await screen.findByTestId("summon"));
+    expect(await screen.findByTestId("result", {}, { timeout: 6000 })).toHaveTextContent("How far!");
+    // it does not leave: it listens again (without taking the keyboard) for what you want
+    await waitFor(() => expect(starts).toBe(2), { timeout: 4000 });
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-listening"));
+    expect(calls.filter((c) => c.path === "/agent/runs" && c.method === "POST")).toHaveLength(1);
+  }, 15000);
 });

@@ -1,13 +1,15 @@
-"""'Hey Vico': a wake phrase recognised on this computer.
+"""Calling Vico by name, recognised on this computer.
 
-Vosk (Apache-2.0) with its small English model listens for a few phrases only. Audio heard
+Any phrase with "Vico" in it wakes Vico: "Hey Vico", "Vico wassup", "Vico how far", "Okay
+Vico, open Notepad". Vosk (Apache-2.0) with its small English model listens only for the name
+and a few look-alike words. Audio heard
 while waiting never leaves the computer and is never stored: each block is fed to the
 recognizer and dropped. When the phrase is heard, the push-to-talk recorder starts at once
 so the request that follows ("Hey Vico, open Notepad") is captured, and the desktop app is
 told to come up.
 
-The model is downloaded once from Alpha Cephei, its publisher, and used only if its SHA-256
-matches.
+The model ships with the installer; if it is missing it is downloaded once from Alpha Cephei,
+its publisher, and used only if its SHA-256 matches.
 """
 
 from __future__ import annotations
@@ -33,17 +35,17 @@ log = logging.getLogger(__name__)
 MODEL_NAME = "vosk-model-small-en-us-0.15"
 MODEL_URL = f"https://alphacephei.com/vosk/models/{MODEL_NAME}.zip"
 MODEL_SHA256 = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498"  # 41,205,931 bytes
-WAKE_PHRASES = ("hey vico", "hi vico", "okay vico")
-# Look-alikes give the recognizer somewhere to put near misses. Tested with Windows' David and
-# Zira voices: "hey/hi vico" are accepted; "hey victor", "hey rico", "hey siri" and "the vehicle"
-# are not.
-GRAMMAR = [*WAKE_PHRASES, "hey victor", "hey vicky", "hey video", "hey rico", "hey [unk]", "[unk]"]
+WAKE_WORD = "vico"
+# Look-alike words give the recognizer somewhere to put near misses; everything else is [unk].
+# Tested with Windows' David and Zira voices (28 of 28 right): "Hey Vico", "Vico wassup",
+# "Vico how far", "Vico open notepad" and "Okay Vico" wake it; "the vehicle", "play the video",
+# "Hey Victor", "Hey Rico", "Victoria is here" and "vicious dog" do not.
+GRAMMAR = [WAKE_WORD, "vehicle", "video", "victor", "vicky", "rico", "vicious", "victoria", "[unk]"]
 CLAIM_SECONDS = 4.0  # a wake the desktop app never picks up is dropped after this long
 
 
 def is_wake(text: str) -> bool:
-    words = " ".join(str(text).lower().split())
-    return any(phrase in words for phrase in WAKE_PHRASES)
+    return WAKE_WORD in str(text).lower().split()
 
 
 def model_dir() -> Path:

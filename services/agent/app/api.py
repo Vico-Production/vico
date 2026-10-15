@@ -113,8 +113,8 @@ def build_services(*, secrets: SecretStore | None = None, hub_overrides: dict[st
 def sync_wake(s: Services) -> None:
     if s.wake is None:
         return
-    current = s.settings.load()
-    if current.wake_word and current.onboarding_complete:
+    # On from the moment Vico is installed: saying "Vico" before setup opens the setup.
+    if s.settings.load().wake_word:
         s.wake.enable()
     else:
         s.wake.disable()
@@ -336,6 +336,14 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         return ok({"seconds": round(seconds, 1), "transcript": {
             "text": transcript.text, "language": transcript.language, "provider": transcript.provider,
             "model": transcript.model, "latency_ms": transcript.latency_ms, "confidence": transcript.confidence}})
+
+    @app.post(f"{API_PREFIX}/system/microphone-settings")
+    async def microphone_settings(request: Request):
+        """Open Windows' microphone privacy page (it only opens the page; the user decides)."""
+        if sys.platform != "win32":
+            raise VicoError(ErrorCode.UNSUPPORTED, "Open your system's sound settings to check the microphone.")
+        os.startfile("ms-settings:privacy-microphone")  # type: ignore[attr-defined]  # noqa: S606
+        return ok({"opened": True})
 
     @app.get(f"{API_PREFIX}/audio/wake")
     async def audio_wake(request: Request):

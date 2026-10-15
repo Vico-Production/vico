@@ -14,9 +14,10 @@ Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on Google
 
 | | |
 |---|---|
-| Summon | Say **"Hey Vico"**, press **Win + Alt + V**, or click the tray icon. (If another app owns that shortcut, Vico uses Ctrl + Alt + V; the tray menu shows which.) "Hey Vico, open Notepad" works in one breath. |
-| Talk | Just speak. Vico stops listening when you pause, shows what it heard, and goes on its own unless you start editing. |
-| Type instead | Start typing at any moment (noisy room, quiet office). The microphone stops and your typing takes over. |
+| Summon | Say anything with **"Vico"** in it ("Hey Vico", "Vico wassup", "Vico how far", "Vico, open Notepad"), press **Win + Alt + V**, or click the tray icon. It listens from the moment it is installed; nothing to switch on. (If another app owns the shortcut, Vico uses Ctrl + Alt + V; the tray menu shows which.) |
+| Talk | Vico comes up listening. Take your time: it waits for you to finish (a longer pause), shows what it heard, and goes on its own unless you start editing. After a task, or a greeting, it keeps listening about 10 seconds for your next request without taking your keyboard. |
+| Type instead | Press **Type instead**, or just start typing. The microphone stops and your typing takes over. |
+| Talk to Vico itself | "Stay" or "don't go yet" (it stays and dozes until called), "you can go", "move to the left / top corner / out of my way", "put your label at the bottom" (Possession). Any wording, in any of the four languages. You can also drag it by its handle: Peek's hands, the yo-yo's anchor, Possession's label. It ducks out of the way when your mouse slows down near it. |
 | Approve | **Enter** to allow, **Esc** to stop. Risky steps (delete, commands, uploads, sends) need **Enter held down**. |
 | Leave | **Esc** at any time. A running task is cancelled. |
 | Settings | Tray icon → Settings and access codes (or type "vico settings"): your Gemini code, an optional Groq backup code, "ask me before acting", "Hey Vico", and **Remove my codes and start over**. Vico starts when you sign in; untick it in the tray menu. |

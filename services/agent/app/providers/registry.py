@@ -15,6 +15,7 @@ from typing import Any, TypeVar
 
 import httpx
 
+from app.agent import control
 from app.agent.language import safe_restoration
 from app.agent.prompts import SUMMARY_SYSTEM, UNDERSTAND_SYSTEM, translate_system
 from app.contracts import LANGUAGE_NAMES, ErrorCode, ProviderStatus, VicoError
@@ -142,7 +143,7 @@ class ProviderHub:
     async def complete(self, system: str, user: str, json_mode: bool = True):
         return await self._run("llm", lambda p: p.complete(system, user, json_mode=json_mode))
 
-    async def understand(self, text: str) -> dict[str, str]:
+    async def understand(self, text: str) -> dict[str, Any]:
         """Detect the request's language and its English meaning in one call."""
         completion = await self.complete(UNDERSTAND_SYSTEM, text, json_mode=True)
         data = parse_json_text(completion.text)
@@ -152,7 +153,9 @@ class ProviderHub:
         return {"language": normalize_language(data.get("language")) or "en",
                 "english": english.strip() if isinstance(english, str) and english.strip() else text,
                 # Tone marks restored for display and planning, only if nothing but diacritics changed.
-                "restored": safe_restoration(text, data.get("restored")) or text}
+                "restored": safe_restoration(text, data.get("restored")) or text,
+                # A request about Vico itself (stay, go, move, greeting) rather than a task.
+                "control": control.clean(data.get("control"))}
 
     def voice_ready(self) -> bool:
         s = self.settings()

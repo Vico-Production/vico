@@ -187,12 +187,21 @@ class DonePlan(StrictModel):
     message: str = Field(min_length=1, max_length=1000)
 
 
-Plan = ToolCallPlan | ClarifyPlan | UnsupportedPlan | DonePlan
+class ControlPlan(StrictModel):
+    """The request is about Vico itself (stay, go, move, greeting), not a task."""
+
+    kind: Literal["control"]
+    action: Literal["stay", "go", "move", "greet"]
+    where: str | None = Field(default=None, max_length=20)
+
+
+Plan = ToolCallPlan | ClarifyPlan | UnsupportedPlan | DonePlan | ControlPlan
 _PLAN_TYPES: dict[str, type[StrictModel]] = {
     "tool_call": ToolCallPlan,
     "clarify": ClarifyPlan,
     "unsupported": UnsupportedPlan,
     "done": DonePlan,
+    "control": ControlPlan,
 }
 
 

@@ -50,7 +50,8 @@
         "at": "2026-10-14T16:51:28.972+00:00",
         "note": "Create the folder ~/Documents/VicoDemo/Demo"
       }
-    ]
+    ],
+    "control": null
   },
   "error": null
 }

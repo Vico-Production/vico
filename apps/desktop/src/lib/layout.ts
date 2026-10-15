@@ -14,9 +14,11 @@ export interface Rect {
 /** How the look behaves right now, derived from the session phase. */
 export type Mood = "away" | "listen" | "think" | "work" | "ask" | "done" | "sad";
 
+/** Where the user put each look: fractions of the screen width; the label 0 = top, 1 = bottom. */
+export type SpotMap = Partial<Record<"peek" | "yoyo" | "possession_label", number>>;
+
 export const PEEK_W = 100; // the peeking figure, drawn at the bottom edge
 export const PEEK_H = 82;
-export const YOYO_X_FROM_RIGHT = 110; // the yo-yo hangs this far from the right edge
 export const ORB = 58;
 const GAP = 14;
 
@@ -30,16 +32,20 @@ export function promptSize(phase: string, screen: { width: number; height: numbe
   }
   if (phase === "approval") return { width: 480, height: 210 };
   if (phase === "question") return { width: 460, height: 176 };
-  return { width: 460, height: 138 };
+  if (phase === "typing") return { width: 460, height: 150 };
+  return { width: 420, height: 150 }; // listening, transcribing, review
 }
 
-/** Peek walks along the bottom edge towards the window it is working in. */
-export function peekCenter(mood: Mood, screen: { width: number }, target: Rect | null): number {
-  const home = screen.width * 0.5;
-  if ((mood === "work" || mood === "ask") && target) {
-    return clamp(target.x + target.width / 2, PEEK_W, screen.width - PEEK_W);
-  }
-  return home;
+/** Peek's home on the bottom edge (where the user left it, or the middle). */
+export function peekHome(screen: { width: number }, spots?: SpotMap): number {
+  return clamp((spots?.peek ?? 0.5) * screen.width, PEEK_W, screen.width - PEEK_W);
+}
+
+/** The yo-yo's anchor on the top edge (where the user left it, or near the right corner). */
+export function yoyoHome(screen: { width: number }, spots?: SpotMap): number {
+  const fallback = screen.width - 110;
+  const x = spots?.yoyo !== undefined ? spots.yoyo * screen.width : fallback;
+  return clamp(x, ORB, screen.width - ORB / 2 - 8);
 }
 
 export function yoyoLength(mood: Mood): number {
@@ -62,6 +68,7 @@ export function promptFrame(
   mood: Mood,
   screen: { width: number; height: number },
   target: Rect | null,
+  spots?: SpotMap,
 ): Rect {
   const { width, height } = promptSize(phase, screen);
   if (phase === "setup" || phase === "settings") {
@@ -70,16 +77,19 @@ export function promptFrame(
   let x: number;
   let y: number;
   if (look === "peek") {
-    x = peekCenter(mood, screen, target) - width / 2;
+    x = peekHome(screen, spots) - width / 2;
     y = screen.height - PEEK_H - GAP - height;
   } else if (look === "yoyo") {
-    x = screen.width - YOYO_X_FROM_RIGHT - ORB / 2 - GAP - width;
+    const anchor = yoyoHome(screen, spots);
+    const leftSide = anchor > screen.width / 2;
+    x = leftSide ? anchor - ORB / 2 - GAP - width : anchor + ORB / 2 + GAP;
     y = yoyoLength(mood === "away" ? "listen" : mood) - 10;
   } else {
     const t = usableTarget(target, screen);
+    const bottom = (spots?.possession_label ?? 0) >= 0.5;
     if (t) {
       x = t.x + (t.width - width) / 2;
-      y = t.y + 46;
+      y = bottom ? t.y + t.height - height - 30 : t.y + 46;
     } else {
       x = (screen.width - width) / 2;
       y = 56;

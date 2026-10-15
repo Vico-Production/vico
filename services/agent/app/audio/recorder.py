@@ -28,7 +28,7 @@ CHANNELS = 1
 SAMPLE_WIDTH = 2  # int16
 MIN_SECONDS = 0.4
 DEAD_PEAK = 2  # a device whose samples never exceed this is muted or disconnected
-PROBE_SECONDS = 0.45  # how long a device may stay dead before the next one is tried
+PROBE_SECONDS = 1.2  # how long a device may stay dead before the next one is tried
 TARGET_PEAK = 24_000  # quiet recordings are raised towards this before transcription
 _SKIP_INPUTS = ("stereo mix", "what u hear", "loopback", "sound mapper", "primary sound capture")
 
@@ -160,6 +160,8 @@ class Recorder:
         self._opened = 0.0  # when the current device was opened
         self._peak = 0
         self._candidates: list[Any] = []
+        self._first: Any = None  # the device tried first; Vico returns to it if none sounds alive
+        self._settled = False  # stop trying other devices for this recording
         self._device: Any = None
         self._working: Any = None  # the device that last produced real sound
         self._known_working = False
@@ -227,26 +229,37 @@ class Recorder:
             if self._known_working and self._working in candidates:
                 candidates = [self._working] + [d for d in candidates if d != self._working]
             self._candidates = candidates
+            self._first, self._settled = candidates[0], False
             self._started = time.monotonic()
             self._open_next()
         self._notify(True)
 
     def _check_dead_device(self) -> None:
-        """Move to the next microphone when this one has delivered only digital silence."""
-        if self._stream is None or self._peak > DEAD_PEAK or self._bytes == 0:
+        """Move to the next microphone when this one has delivered only digital silence.
+
+        Some microphones send exact zeros until someone speaks (noise suppression), so this
+        never gives up: when no other device sounds alive either, it goes back to the first
+        one and keeps recording there, only flagging `silent` as a hint."""
+        if self._peak > DEAD_PEAK:
+            self.silent = False
+            return
+        if self._stream is None or self._settled or self._bytes == 0:
             return
         if time.monotonic() - self._opened < PROBE_SECONDS:
-            return
-        if not self._candidates:
-            self.silent = True
             return
         self._close()
         self._chunks, self._bytes, self.level = [], 0, 0.0
         try:
-            if not self._open_next():
-                self.silent = True
+            opened = self._open_next()
         except VicoError:
-            self.silent = True
+            opened = False
+        if not opened:
+            self.silent, self._settled = True, True
+            self._candidates = [self._first]
+            try:
+                self._open_next()
+            except VicoError:
+                pass
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -274,11 +287,16 @@ class Recorder:
             self._close()
             pcm = b"".join(self._chunks)
             dead = self._peak <= DEAD_PEAK
+            every_device_silent = self.silent
             if not dead:
                 self._working, self._known_working = self._device, True
             self._chunks, self._bytes, self.level, self._peak = [], 0, 0.0, 0
         self._notify(False)
         seconds = len(pcm) / (SAMPLE_RATE * SAMPLE_WIDTH)
+        if dead and (every_device_silent or seconds >= MIN_SECONDS):
+            raise VicoError(ErrorCode.MIC_UNAVAILABLE,
+                            "I couldn't hear any sound from your microphone. Check it isn't muted, and that "
+                            "Windows lets apps use it (Settings → Privacy → Microphone).", status=409)
         if seconds < MIN_SECONDS:
             raise VicoError(ErrorCode.VALIDATION_ERROR, "That was too short. Speak a little longer.")
         if dead:

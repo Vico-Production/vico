@@ -46,124 +46,277 @@ body,
   pointer-events: none;
   overflow: hidden;
 }
+/* Only the handles take the mouse (and only while the cursor is over them). */
+.handle,
+.possession-pill {
+  pointer-events: auto;
+  cursor: grab;
+}
+.grabbed .handle,
+.possession.grabbed .possession-pill {
+  cursor: grabbing;
+}
 
-/* Shared faces: eyes, pupils and mouths react to the mood. */
-.pupil,
-.happy,
-.mouth-o,
-.mouth-smile,
-.mouth-flat,
-.peek-body,
-.orb {
+/* Faces: pupils follow what Vico is doing. */
+.pu {
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform 0.3s ease, opacity 0.2s ease;
+  transition: transform 0.3s ease;
 }
-.happy,
-.mouth-o,
-.mouth-smile,
-.mouth-flat {
-  opacity: 0;
-}
-.mood-listen .mouth-o,
-.mood-think .mouth-flat,
-.mood-work .mouth-flat,
-.mood-sad .mouth-flat,
-.mood-ask .mouth-smile,
-.mood-done .mouth-smile,
-.mood-away .mouth-smile {
-  opacity: 1;
-}
-.mood-done .pupil {
-  opacity: 0;
-}
-.mood-done .happy {
-  opacity: 1;
-}
-.mood-think .pupil {
+.gaze-think .pu {
   animation: look 1.4s ease-in-out infinite;
 }
-.mood-work .pupil {
+.gaze-work .pu {
   transform: translate(3px, 2px);
 }
-.mood-ask .pupil {
-  transform: translate(0, -3px);
+.gaze-up .pu {
+  transform: translate(1px, -4px);
 }
-.mood-sad .pupil {
+.gaze-down .pu {
   transform: translate(0, 3px);
 }
+.wv {
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 72px 40px;
+}
+.pin-badge,
+.pin-inline {
+  fill: none;
+  stroke: #d85a30;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.zz,
+.q {
+  position: absolute;
+  font: 700 15px var(--display);
+  color: var(--muted);
+  pointer-events: none;
+}
+.q {
+  font-size: 26px;
+  color: var(--mint);
+}
 
-/* Peek: holds the bottom edge of the screen and peeks over it. */
+/* Peek: holds the bottom edge and peeks over it; leaps to whatever it works on. */
 .peek-at {
   position: absolute;
   bottom: 0;
-  transition: left 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100px;
+  transform-origin: 50px 41px;
+  transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.peek-at.grabbed {
+  transition: none;
 }
 .peek-figure {
   display: block;
-  overflow: visible;
-  transform: translateY(105%);
+  transform: translateY(4px);
   transition: transform 0.55s cubic-bezier(0.3, 1.4, 0.5, 1);
 }
-.peek-figure:not(.mood-away) {
-  transform: translateY(4px);
-}
-.peek-figure.mood-away {
+.peek-at.away .peek-figure {
+  transform: translateY(105%);
   transition: transform 0.4s ease-in;
 }
-.peek-figure.mood-listen .peek-body {
+.peek-figure .hd {
+  transform-box: view-box;
+  transform-origin: 40px 66px;
+  transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.peek-handle {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+}
+.peek-at.grabbed .hl,
+.peek-at.grabbed .hr {
+  fill: var(--foam);
+}
+.peek-at.dodge .hd {
+  transform: translateY(72px); /* the body ducks; the hands stay on the edge */
+}
+.peek-at .pin-badge {
+  position: absolute;
+  right: -8px;
+  top: -14px;
+  width: 22px;
+  height: 22px;
+}
+.peek-at .zz {
+  right: -18px;
+  top: -6px;
+  animation: float 2s ease-in-out infinite;
+}
+.peek-at .q {
+  right: -12px;
+  top: -14px;
+}
+.peek-at.typing .hd {
+  animation: bounce 0.18s ease-in-out infinite alternate;
+}
+.phase-listening .peek-at[data-r=""] .hd {
   animation: bob 0.5s ease-in-out infinite;
 }
-.peek-figure.mood-work .peek-body {
-  transform-origin: bottom center;
+.phase-working .peek-at[data-r=""]:not(.typing) .hd {
   animation: waddle 0.32s ease-in-out infinite;
 }
-.peek-figure.mood-done .peek-body {
-  animation: hop 0.5s ease-out 2;
+.peek-at[data-r="arrive"] .peek-figure {
+  animation: pkUp 0.8s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
-.peek-figure.mood-sad .peek-body {
-  transform: translateY(6px);
+.peek-at[data-r="gotit"] .hd {
+  animation: nod 0.35s ease-in-out 2;
+}
+.peek-at[data-r="wait"] .hl {
+  animation: tap 0.35s ease-in-out infinite alternate;
+}
+.peek-at[data-r="wait"] .hr {
+  animation: tap 0.35s ease-in-out 0.35s infinite alternate;
+}
+.peek-at[data-r="stay"] .peek-figure {
+  transform: translateY(-6px);
+}
+.peek-at:is([data-r="bye"], [data-r="greet"]) .wv {
+  opacity: 1;
+  animation: wave 0.3s ease-in-out 4 alternate;
+}
+.peek-at[data-r="bye"] .peek-figure {
+  animation: sink 0.6s ease-in 1s forwards;
+}
+.peek-at[data-r="celebrate"] .hd {
+  animation: jump 0.45s ease-out 3;
+}
+.peek-at[data-r="shrug"] .hd {
+  transform: translateY(10px);
+}
+.peek-at[data-r="refuse"] .hd {
+  animation: shake 0.25s ease-in-out 4;
+}
+.peek-at[data-r="huh"] .hd {
+  transform: rotate(-12deg);
+}
+.peek-at[data-r="doze"] .hd {
+  animation: snooze 2.4s ease-in-out infinite;
+}
+.peek-at[data-r="cooling"] .hd {
+  animation: shiver 0.1s linear infinite;
+}
+.peek-at[data-r="move"] .hd {
+  animation: waddle 0.3s ease-in-out 5;
 }
 
-/* Yo-yo: hangs from the top edge on a thread. */
+/* Yo-yo: hangs from the top edge; drops onto whatever it works on. */
 .yoyo-at {
   position: absolute;
   top: 0;
+  width: 58px;
+  transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.yoyo-figure {
+.yoyo-at.grabbed {
+  transition: none;
+}
+.anchor {
+  left: 13px;
+  top: 0;
+  width: 32px;
+  height: 10px;
+  z-index: 1;
+  border-radius: 0 0 7px 7px;
+  background: #888780;
+}
+.yoyo-at.grabbed .anchor {
+  background: var(--teal);
+}
+.yyin {
   display: flex;
   flex-direction: column;
   align-items: center;
   transform-origin: top center;
 }
-.yoyo-figure .thread {
+.yyin[data-settle="1"] {
+  animation: damp 1.4s ease-out;
+}
+.yoyo-at .thread {
+  position: relative;
   width: 2px;
-  height: var(--len);
-  background: rgba(222, 232, 228, 0.8);
+  background: rgba(222, 232, 228, 0.85);
   transition: height 0.55s cubic-bezier(0.3, 1.4, 0.5, 1);
 }
-.yoyo-figure .orb {
+.yoyo-at.dodge .thread {
+  transition: height 0.25s ease-in;
+}
+.yoyo-at .orb {
   display: block;
   margin-top: -1px;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.3s ease;
 }
-.yoyo-figure.mood-away .thread {
-  transition: height 0.35s ease-in;
+.yoyo-at .pin-badge {
+  position: absolute;
+  left: -10px;
+  top: 6px;
+  width: 20px;
+  height: 20px;
 }
-.yoyo-figure.mood-away .orb {
-  transform: translateY(-115%);
-  transition: transform 0.35s ease-in;
+.yoyo-at .zz {
+  left: 62px;
+  margin-top: 4px;
+  animation: float 2s ease-in-out infinite;
 }
-.yoyo-figure.mood-work {
-  animation: swing 1.1s ease-in-out infinite;
+.yoyo-at .q {
+  left: 60px;
 }
-.yoyo-figure.mood-listen .orb {
+.yoyo-at.typing .orb {
+  animation: bounce 0.18s ease-in-out infinite alternate;
+}
+.phase-listening .yoyo-at[data-r=""] .orb {
   animation: bob 0.45s ease-in-out infinite;
 }
-.yoyo-figure.mood-think .orb {
+.phase-thinking .yoyo-at[data-r=""] .orb,
+.phase-working .yoyo-at[data-r=""]:not(.typing) .orb {
   animation: tilt 1.3s ease-in-out infinite;
 }
-.yoyo-figure.mood-done .orb {
-  animation: spin 0.7s ease-out;
+.yoyo-at[data-r="arrive"] .thread {
+  animation: drop 0.9s ease-out;
+}
+.yoyo-at[data-r="gotit"] .orb {
+  animation: bob 0.3s ease-in-out 2;
+}
+.yoyo-at[data-r="wait"] .yyin {
+  animation: sway 2.4s ease-in-out infinite;
+}
+.yoyo-at[data-r="bye"] .orb {
+  animation: spin 0.5s linear 2;
+}
+.yoyo-at[data-r="bye"] .thread {
+  animation: zip 1.4s ease-in forwards;
+}
+.yoyo-at[data-r="celebrate"] .yyin {
+  animation: around 1s cubic-bezier(0.5, 0, 0.5, 1) 2;
+}
+.yoyo-at[data-r="shrug"] .orb {
+  transform: rotate(18deg);
+}
+.yoyo-at[data-r="refuse"] .yyin {
+  animation: no 0.3s ease-in-out 4;
+}
+.yoyo-at[data-r="huh"] .orb {
+  transform: rotate(-16deg);
+}
+.yoyo-at[data-r="doze"] .yyin {
+  animation: sway 4s ease-in-out infinite;
+}
+.yoyo-at[data-r="greet"] .orb {
+  animation: spin 0.6s linear 1;
+}
+.yoyo-at[data-r="cooling"] .orb {
+  animation: shiver 0.1s linear infinite;
+}
+.yoyo-at[data-r="move"] .yyin {
+  animation: damp 1.4s ease-out;
 }
 
 /* Possession: the window being used lights up and Vico talks on its edge. */
@@ -203,15 +356,43 @@ body,
 .possession.mood-listen .edge-base {
   animation: breathe 1.2s ease-in-out infinite;
 }
-.possession.mood-ask .edge-base {
-  stroke: var(--amber);
-}
 .possession.mood-done .edge-base {
   stroke: var(--mint);
-  animation: flash 0.9s ease-out;
 }
 .possession.mood-sad .edge-base {
   stroke: var(--coral);
+}
+.possession[data-r="arrive"] {
+  animation: drawIn 0.7s ease-out;
+}
+.possession:is([data-r="gotit"], [data-r="celebrate"]) .edge-base {
+  animation: flash 0.5s ease-out 2;
+}
+.possession[data-r="wait"] .edge-base {
+  stroke: var(--amber);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+.possession[data-r="bye"] {
+  animation: fadeOut 0.6s ease-in 1s forwards;
+}
+.possession[data-r="shrug"] .edge-base {
+  stroke: var(--amber);
+}
+.possession[data-r="refuse"] .edge-base {
+  stroke: var(--coral);
+}
+.possession[data-r="refuse"] .possession-pill {
+  animation: no2 0.25s ease-in-out 4;
+}
+.possession[data-r="doze"] {
+  opacity: 0.45;
+}
+.possession[data-r="cooling"] .edge-base {
+  stroke: #85b7eb;
+}
+.possession-free {
+  position: absolute;
+  inset: 0 0 auto 0;
 }
 .possession-pill {
   position: absolute;
@@ -228,6 +409,7 @@ body,
   color: #e1f5ee;
   font-size: 13px;
   white-space: nowrap;
+  transition: left 0.3s ease, right 0.3s ease, top 0.3s ease, bottom 0.3s ease;
 }
 .possession-pill span {
   overflow: hidden;
@@ -236,11 +418,24 @@ body,
 .possession-pill.inside {
   top: 10px;
 }
+.possession-pill.bottom {
+  top: auto;
+  bottom: -15px;
+}
+.possession-pill.dodged {
+  left: auto;
+  right: 14px; /* slides to the other end of the frame, out of the cursor's way */
+}
 .possession-pill.floating {
   left: 50%;
   top: 14px;
   transform: translateX(-50%);
   max-width: 520px;
+}
+.possession-pill.floating.dodged {
+  left: auto;
+  right: 20px;
+  transform: none;
 }
 .possession-pill .dot {
   flex: none;
@@ -250,9 +445,85 @@ body,
   background: var(--mint);
   animation: pulse 1s ease-in-out infinite;
 }
-.mood-ask .possession-pill .dot,
-.mood-ask.possession-pill .dot {
+.possession[data-r="wait"] .possession-pill .dot {
   background: var(--amber);
+}
+.pin-inline {
+  width: 13px;
+  height: 13px;
+  stroke: #fac775;
+}
+.ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+}
+.ghost .ring {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--teal);
+  opacity: 0;
+}
+
+/* Symbolic motions for steps with no place on screen. */
+.prop-at {
+  position: absolute;
+  pointer-events: none;
+  animation: pop 0.2s ease-out;
+}
+.peek-prop {
+  left: 100%;
+  bottom: 34px;
+  margin-left: 2px;
+}
+.yoyo-prop {
+  right: 100%;
+  margin-right: 8px;
+  margin-top: 6px;
+}
+.prop * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.prop-lines {
+  animation: lines 1.2s linear infinite;
+}
+.prop .key {
+  animation: keyblink 0.6s steps(1) infinite;
+}
+.prop .k1 {
+  animation-delay: 0.12s;
+}
+.prop .k2 {
+  animation-delay: 0.24s;
+}
+.prop .k3 {
+  animation-delay: 0.36s;
+}
+.prop .k4 {
+  animation-delay: 0.48s;
+}
+.prop .spinner {
+  animation: spin 0.8s linear infinite;
+}
+.prop-bin .doc {
+  animation: binDrop 0.9s ease-in infinite;
+}
+.prop .folder {
+  animation: popIn 0.5s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.prop .doc.carry {
+  animation: carry 1s ease-in-out infinite;
+}
+.prop .ripple {
+  animation: ripple 0.7s ease-out infinite;
 }
 
 /* Speech bubbles: what Vico says while the keyboard is yours. */
@@ -863,6 +1134,302 @@ details.server[open] {
 @keyframes listening {
   50% {
     border-color: var(--mint);
+  }
+}
+
+/* --- the voice view: listening comes first ------------------------------------------- */
+
+.prompt.voice {
+  gap: 10px;
+}
+.voice-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.meter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 46px;
+  height: 42px;
+}
+.meter i {
+  width: 5px;
+  border-radius: 3px;
+  background: var(--mint);
+  transition: height 0.1s ease-out;
+}
+.prompt.transcribing .meter i {
+  animation: wavey 0.8s ease-in-out infinite;
+}
+.prompt.transcribing .meter i:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.prompt.transcribing .meter i:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.prompt.transcribing .meter i:nth-child(4) {
+  animation-delay: 0.3s;
+}
+.prompt.transcribing .meter i:nth-child(5) {
+  animation-delay: 0.4s;
+}
+.voice-title {
+  margin: 0;
+  font: 600 18px var(--display);
+}
+.voice-sub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.voice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+}
+.bubble.side-right::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  background: #0e1513;
+  border-bottom: 1px solid var(--ink-line);
+  border-left: 1px solid var(--ink-line);
+  transform: rotate(45deg);
+}
+.ear {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 0 calc(var(--level, 0) * 18px) rgba(93, 202, 165, 0.25);
+  vertical-align: 1px;
+}
+.mini-yoyo .thread {
+  width: 2px;
+  margin: 0 auto;
+  background: rgba(222, 232, 228, 0.8);
+  transition: height 0.4s ease;
+}
+.mini-peek.away {
+  transform: translateY(100%) !important;
+}
+.mini-ghost {
+  position: absolute;
+  left: 40%;
+  top: 40%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mint);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes pkUp {
+  from {
+    transform: translateY(80px);
+  }
+}
+@keyframes nod {
+  50% {
+    transform: rotate(9deg);
+  }
+}
+@keyframes tap {
+  to {
+    transform: translateY(-5px);
+  }
+}
+@keyframes wave {
+  from {
+    transform: rotate(-20deg);
+  }
+  to {
+    transform: rotate(25deg);
+  }
+}
+@keyframes sink {
+  to {
+    transform: translateY(105%);
+  }
+}
+@keyframes jump {
+  50% {
+    transform: translateY(-24px) scaleY(1.04);
+  }
+}
+@keyframes shake {
+  25% {
+    transform: rotate(-9deg);
+  }
+  75% {
+    transform: rotate(9deg);
+  }
+}
+@keyframes snooze {
+  50% {
+    transform: scaleY(1.03);
+  }
+}
+@keyframes float {
+  0% {
+    transform: translateY(0);
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-16px);
+    opacity: 0;
+  }
+}
+@keyframes shiver {
+  50% {
+    transform: translateX(1.5px);
+  }
+}
+@keyframes bounce {
+  to {
+    transform: translateY(-5px) scaleY(0.94);
+  }
+}
+@keyframes drop {
+  0% {
+    height: 0;
+  }
+  60% {
+    height: 136px;
+  }
+  80% {
+    height: 100px;
+  }
+}
+@keyframes zip {
+  0%,
+  35% {
+    height: 112px;
+  }
+  100% {
+    height: 0;
+  }
+}
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes around {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes no {
+  25% {
+    transform: rotate(-12deg);
+  }
+  75% {
+    transform: rotate(12deg);
+  }
+}
+@keyframes damp {
+  0% {
+    transform: rotate(22deg);
+  }
+  25% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+  75% {
+    transform: rotate(-3deg);
+  }
+}
+@keyframes drawIn {
+  from {
+    clip-path: inset(50% 50% 50% 50%);
+  }
+  to {
+    clip-path: inset(-30px);
+  }
+}
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes no2 {
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
+@keyframes lines {
+  to {
+    transform: translateY(-12px);
+  }
+}
+@keyframes keyblink {
+  50% {
+    fill: #ffffff;
+  }
+}
+@keyframes binDrop {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  80% {
+    transform: translateY(16px) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(18px) scale(0);
+    opacity: 0;
+  }
+}
+@keyframes popIn {
+  from {
+    transform: scale(0);
+  }
+}
+@keyframes carry {
+  50% {
+    transform: translate(12px, -6px);
+  }
+  100% {
+    transform: translate(22px, 0);
+  }
+}
+@keyframes ripple {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+@keyframes wavey {
+  50% {
+    height: 30px;
   }
 }
 

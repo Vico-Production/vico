@@ -163,7 +163,7 @@ async def test_understand_returns_safe_restoration():
     reply = {"language": "yo", "restored": "Ṣí fóldà mi", "english": "Open my folder"}
     h = hub({"gemini": MockProvider(replies=[reply])})
     out = await h.understand("Si folda mi")
-    assert out == {"language": "yo", "english": "Open my folder", "restored": "Ṣí fóldà mi"}
+    assert out == {"language": "yo", "english": "Open my folder", "restored": "Ṣí fóldà mi", "control": None}
     tampered = {"language": "yo", "restored": "Pa gbogbo faili re", "english": "Delete all your files"}
     h = hub({"gemini": MockProvider(replies=[tampered])})
     assert (await h.understand("Si folda mi"))["restored"] == "Si folda mi"

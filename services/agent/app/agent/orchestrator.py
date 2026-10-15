@@ -17,11 +17,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
-from app.agent import policy, stage
+from app.agent import control, policy, stage
 from app.agent.language import guess_language
 from app.agent.offline_parser import OFFLINE_HELP, parse_offline
 from app.agent.prompts import PLANNER_SYSTEM, planner_user_prompt
-from app.agent.schemas import ClarifyPlan, DonePlan, Plan, ToolCallPlan, UnsupportedPlan, parse_plan
+from app.agent.schemas import ClarifyPlan, ControlPlan, DonePlan, Plan, ToolCallPlan, UnsupportedPlan, parse_plan
 from app.config import APPROVAL_TIMEOUT_S, MAX_CLARIFICATIONS, MAX_TEXT_INPUT_CHARS, TOOL_TIMEOUT_S, data_dir
 from app.contracts import TERMINAL_STATES, ErrorCode, Language, RunState, VicoError
 from app.platform.base import PlatformAdapter
@@ -110,6 +110,7 @@ class Run:
     message_localized: str | None = None
     error: dict[str, Any] | None = None
     cooldown_until: str | None = None
+    control: dict[str, Any] | None = None  # the request was about Vico itself (stay, go, move, greet)
     timeline: list[dict[str, str]] = field(default_factory=list)
     clarifications: list[dict[str, str]] = field(default_factory=list)
     cancel: asyncio.Event = field(default_factory=asyncio.Event)
@@ -136,7 +137,8 @@ class Run:
             "steps": [s.public() for s in self.steps],
             "pending_step_id": pending.id if pending else None,
             "question": self.question, "message": self.message, "message_localized": self.message_localized,
-            "error": self.error, "cooldown_until": self.cooldown_until, "timeline": self.timeline,
+            "error": self.error, "cooldown_until": self.cooldown_until, "control": self.control,
+            "timeline": self.timeline,
         }
 
 
@@ -226,6 +228,12 @@ class Orchestrator:
 
     async def _drive(self, run: Run) -> None:
         try:
+            asked = control.parse(run.text)
+            if asked:  # recognised on the computer: instant, no AI call
+                lang = control.greeting_language(run.text) or (
+                    run.language if run.language != AUTO else guess_language(run.text) or "en")
+                self._control(run, asked, lang)
+                return
             settings = self.settings_repo.load()
             ctx = self._context(settings, run)
             cloud = self.hub.has_role("llm") and await self.hub.online()
@@ -245,6 +253,15 @@ class Orchestrator:
         except Exception:
             log.exception("run %s crashed", run.id)
             self._fail(run, ErrorCode.INTERNAL, "Something went wrong inside Vico. Nothing further was done.")
+
+    def _control(self, run: Run, asked: dict[str, Any], language: str) -> None:
+        """A request about Vico itself: the desktop app acts on run.control; nothing runs."""
+        run.control = asked
+        if run.language == AUTO:
+            run.language = language if language in {lang.value for lang in Language} else Language.EN.value
+        run.canonical = run.canonical or run.text
+        run.message = control.reply(asked, run.language)
+        run.set_state(RunState.COMPLETED, asked["action"])
 
     def _fail(self, run: Run, code: ErrorCode, message: str) -> None:
         run.error = {"code": code.value, "message": message}
@@ -319,6 +336,9 @@ class Orchestrator:
                 understood = await self._cloud_call(run, lambda: self.hub.understand(run.text))
                 run.language, run.canonical = understood["language"], understood["english"]
                 run.original = understood.get("restored") or run.original
+                if understood.get("control"):
+                    self._control(run, understood["control"], run.language)
+                    return
         elif run.language != Language.EN:
             translated = await self._cloud_call(run, lambda: self.hub.translate(run.text, run.language, "en"))
             run.canonical = translated["text"]
@@ -338,6 +358,14 @@ class Orchestrator:
             if isinstance(plan, DonePlan):
                 run.message = plan.message
                 await self._localize(run)
+                run.set_state(RunState.COMPLETED, "Done")
+                return
+            if isinstance(plan, ControlPlan):
+                asked = control.clean(plan.model_dump())
+                if asked and not run.steps:
+                    self._control(run, asked, run.language)
+                    return
+                run.message = "Done."
                 run.set_state(RunState.COMPLETED, "Done")
                 return
             if isinstance(plan, UnsupportedPlan):

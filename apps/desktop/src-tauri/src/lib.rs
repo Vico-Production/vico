@@ -322,6 +322,52 @@ fn native_foreground(_app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
     None
 }
 
+/// Work-area origin (physical pixels) and scale, so the UI can turn the screen positions the
+/// engine reports for each step into its own CSS pixels.
+#[tauri::command]
+fn aura_metrics(app: AppHandle) -> Option<Value> {
+    let (origin, _, scale) = work_area(&app)?;
+    Some(json!({ "x": origin.x, "y": origin.y, "scale": scale }))
+}
+
+/// The aura lets every click through, except while the cursor is over Vico's handle
+/// (Peek's hands, the yo-yo's anchor) so it can be dragged.
+#[tauri::command]
+fn aura_interactive(app: AppHandle, on: bool) {
+    if let Some(aura) = app.get_webview_window("aura") {
+        let _ = aura.set_ignore_cursor_events(!on);
+    }
+}
+
+/// While Vico is on screen, tell the aura where the mouse is (in its CSS pixels), so the
+/// avatar can dodge a slowing cursor and offer its handle. A click-through window cannot see
+/// the mouse by itself.
+fn watch_cursor(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut last = (f64::NAN, f64::NAN);
+        loop {
+            std::thread::sleep(Duration::from_millis(40));
+            let Some(aura) = app.get_webview_window("aura") else {
+                continue;
+            };
+            if !aura.is_visible().unwrap_or(false) {
+                continue;
+            }
+            let (Ok(pos), Some((origin, _, scale))) = (app.cursor_position(), work_area(&app))
+            else {
+                continue;
+            };
+            let x = (pos.x - origin.x as f64) / scale;
+            let y = (pos.y - origin.y as f64) / scale;
+            if (x - last.0).abs() < 0.5 && (y - last.1).abs() < 0.5 {
+                continue;
+            }
+            last = (x, y);
+            let _ = app.emit_to("aura", "vico://cursor", json!({ "x": x, "y": y }));
+        }
+    });
+}
+
 #[tauri::command]
 fn prompt_hide(app: AppHandle) {
     if let Some(prompt) = app.get_webview_window("prompt") {
@@ -497,6 +543,7 @@ pub fn run() {
                 slot.clone_from(&shortcut);
             }
             build_tray(&handle, &shortcut)?;
+            watch_cursor(handle.clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -512,6 +559,8 @@ pub fn run() {
             launch_info,
             prompt_frame,
             foreground_rect,
+            aura_metrics,
+            aura_interactive,
             aura_show,
             aura_hide,
             prompt_show,

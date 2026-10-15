@@ -12,6 +12,7 @@ Run from the repo root with the agent's environment:
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -22,10 +23,24 @@ AGENT = ROOT / "services" / "agent"
 ENGINE = ROOT / "apps" / "desktop" / "src-tauri" / "engine"
 
 
+def wake_model() -> Path:
+    """The "Vico" wake-word model, downloaded once from its publisher and checksum-verified,
+    so it ships inside the installer and works the moment Vico is installed."""
+    sys.path.insert(0, str(AGENT))
+    from app.audio.wake import MODEL_NAME, download_model
+
+    target = AGENT / "build" / "models" / MODEL_NAME
+    if not (target / "conf" / "model.conf").exists():
+        print("downloading the wake-word model")
+        download_model(target)
+    return target
+
+
 def main() -> None:
     ext = ".exe" if sys.platform == "win32" else ""
     work = AGENT / "build"
     dist = AGENT / "dist"
+    model = wake_model()
     args = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm", "--clean", "--onedir",
@@ -37,6 +52,7 @@ def main() -> None:
         "--collect-submodules", "keyring.backends",
         "--hidden-import", "send2trash",
         "--collect-all", "vosk",  # loaded lazily by the wake phrase listener, with its native library
+        "--add-data", f"{model}{os.pathsep}models/{model.name}",
         "--exclude-module", "tkinter",
         "--exclude-module", "pytest",
     ]

@@ -42,6 +42,9 @@ class Settings(StrictModel):
     wake_word: bool = True
     # How Vico appears on screen; picked at first run and changeable in Settings.
     look: Literal["peek", "possession", "yoyo"] = "peek"
+    # Where the user dragged or told each look to go: peek and yoyo are a fraction of the
+    # screen width; possession_label is 0 (top edge of the window) or 1 (bottom edge).
+    spots: dict[Literal["peek", "yoyo", "possession_label"], float] = Field(default_factory=dict)
 
 
 class SettingsPatch(StrictModel):
@@ -63,6 +66,7 @@ class SettingsPatch(StrictModel):
     voice_replies: bool | None = None
     wake_word: bool | None = None
     look: Literal["peek", "possession", "yoyo"] | None = None
+    spots: dict[Literal["peek", "yoyo", "possession_label"], float] | None = None
 
 
 class SettingsRepository:

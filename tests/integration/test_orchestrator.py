@@ -265,3 +265,37 @@ async def test_only_one_active_run(make):
     s.orchestrator.start("first", "en")
     with pytest.raises(VicoError):
         s.orchestrator.start("second", "en")
+
+
+async def test_greeting_vico_is_answered_on_the_computer(make):
+    asked = []
+
+    def respond(system, user):
+        asked.append(system)
+        return {"kind": "done", "message": "should not be asked"}
+
+    s = make(MockProvider(responder=respond))
+    run = s.orchestrator.start("Vico how far")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.control == {"action": "greet"} and run.language == "pcm"
+    assert run.message.startswith("How far!") and not run.steps and asked == []
+
+
+async def test_stay_request_in_another_language_comes_from_understand(make):
+    def respond(system, user):
+        if system.startswith("The user gave"):
+            return {"language": "yo", "english": "Don't leave yet, I still need you",
+                    "control": {"action": "stay"}}
+        raise AssertionError("the planner must not see a request about Vico itself")
+
+    s = make(MockProvider(responder=respond))
+    run = s.orchestrator.start("Má lọ, mo ṣì nílò rẹ")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.control == {"action": "stay"} and run.message == "Okay, I'll stay until you say."
+
+
+async def test_planner_can_say_a_request_is_about_vico(make):
+    s = make(planner([{"kind": "control", "action": "move", "where": "top-left"}]))
+    run = s.orchestrator.start("could you sit up in the top left part of my screen from now on", "en")
+    await wait_for(run, RunState.COMPLETED)
+    assert run.control == {"action": "move", "where": "top-left"} and not run.steps
