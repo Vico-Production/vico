@@ -102,7 +102,7 @@ class WindowsAdapter(PlatformAdapter):
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
         results: list[WindowInfo] = []
 
-        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)  # type: ignore[attr-defined]
         def callback(hwnd, _lparam):
             if user32.IsWindowVisible(hwnd):
                 length = user32.GetWindowTextLengthW(hwnd)

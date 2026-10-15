@@ -127,7 +127,7 @@ class PlatformAdapter:
 
 def detached_kwargs() -> dict:
     if os.name == "nt":
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "DETACHED_PROCESS", 0)
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
         return {"creationflags": flags, "close_fds": True,
                 "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL}
     return {"start_new_session": True, "close_fds": True,
