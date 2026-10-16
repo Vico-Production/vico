@@ -11,8 +11,11 @@ from collections.abc import Mapping
 
 _PAYMENT_WORDS = re.compile(
     r"\b(pay|pay now|payment|purchase|buy now|buy|place order|complete order|checkout|check out|"
-    r"confirm payment|confirm order|subscribe|donate|add card|add payment|transfer|send money|"
-    r"top up|withdraw)\b",
+    r"confirm payment|confirm order|donate|add card|add payment|transfer|send money|"
+    r"top up|withdraw|start (?:free )?trial|start (?:my |your )?subscription|upgrade (?:now|to)|"
+    r"subscribe (?:now|for|to (?:premium|plus|pro|a plan))|join (?:premium|plus|membership))\b"
+    # A plain "Subscribe" (YouTube, newsletters) is free; one with a price on it is a payment.
+    r"|\bsubscribe\b.*(?:[$€£₦]|\d+(?:[.,]\d+)?\s*(?:/|per|a)\s*(?:mo|month|year|yr|week))",
     re.IGNORECASE,
 )
 _SEND_WORDS = re.compile(

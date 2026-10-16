@@ -39,6 +39,7 @@ class ToolResult(StrictModel):
 
 
 Summarizer = Callable[[str, str], Awaitable[str]]
+Vision = Callable[[bytes, str], Awaitable[str]]  # (JPEG image, question) -> answer
 
 
 @dataclass
@@ -48,6 +49,7 @@ class ToolContext:
     platform: PlatformAdapter
     browser: BrowserController | None = None
     summarizer: Summarizer | None = None
+    vision: Vision | None = None
     language: str = "en"
     cancel: asyncio.Event = field(default_factory=asyncio.Event)
     tainted: bool = False  # this task has read untrusted text (a page, file or command output)

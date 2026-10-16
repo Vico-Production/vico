@@ -280,7 +280,8 @@ class Orchestrator:
                            extra_protected=[data_dir()])
         paths.workspace.mkdir(parents=True, exist_ok=True)
         return ToolContext(settings=settings, paths=paths, platform=self.platform, browser=self.browser,
-                           summarizer=self.hub.summarize, language=run.language, cancel=run.cancel)
+                           summarizer=self.hub.summarize, vision=self.hub.see if self.hub.can_see() else None,
+                           language=run.language, cancel=run.cancel)
 
     async def _drive(self, run: Run) -> None:
         try:

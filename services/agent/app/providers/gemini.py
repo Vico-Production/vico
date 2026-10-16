@@ -140,6 +140,14 @@ class GeminiProvider:
 
         return await self.models.run(await self.chain(kind), attempt, audio_seconds)
 
+    async def see(self, image_jpeg: bytes, question: str) -> str:
+        """Answer a question about a picture of the screen."""
+        body = {"contents": [{"role": "user", "parts": [
+            {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image_jpeg).decode("ascii")}},
+            {"text": question}]}], "generationConfig": {"temperature": 0}}
+        text, _ = await self._generate("llm", body)
+        return text.strip()
+
     async def speak(self, text: str, model: str) -> bytes:
         """WAV audio of `text` from a Gemini TTS model, kept in memory."""
         from app.providers.tts import gemini_tts_audio, gemini_tts_body

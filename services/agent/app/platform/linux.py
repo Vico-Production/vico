@@ -15,6 +15,28 @@ from pathlib import Path
 from app.contracts import ErrorCode, VicoError
 from app.platform.base import AppEntry, PlatformAdapter, WindowInfo, detached_kwargs, unsupported
 
+WAYLAND_HELP = ("On Ubuntu's Wayland desktop, apps may not type or press keys in other apps. Either choose "
+                "'Ubuntu on Xorg' on the login screen (gear icon), or install ydotool: sudo apt install ydotool")
+# Linux input event codes for ydotool ("29:1 46:1 46:0 29:0" is ctrl+c).
+_EVDEV = {"ctrl": 29, "control": 29, "shift": 42, "alt": 56, "super": 125, "win": 125, "enter": 28, "return": 28,
+          "tab": 15, "esc": 1, "escape": 1, "backspace": 14, "delete": 111, "space": 57, "up": 103, "down": 108,
+          "left": 105, "right": 106, "home": 102, "end": 107, "pageup": 104, "pagedown": 109,
+          **{c: n for c, n in zip("1234567890", range(2, 12), strict=True)},
+          **dict(zip("qwertyuiop", range(16, 26), strict=True)), **dict(zip("asdfghjkl", range(30, 39), strict=True)),
+          **dict(zip("zxcvbnm", range(44, 51), strict=True)),
+          **{f"f{i}": 58 + i for i in range(1, 11)}, "f11": 87, "f12": 88}
+
+
+def ydotool_keys(keys: str) -> list[str]:
+    parts = [p.strip().lower() for p in keys.replace(" ", "+").split("+") if p.strip()]
+    codes = []
+    for p in parts:
+        if p not in _EVDEV:
+            raise VicoError(ErrorCode.VALIDATION_ERROR, f"Unknown key: {p}")
+        codes.append(_EVDEV[p])
+    return [f"{c}:1" for c in codes] + [f"{c}:0" for c in reversed(codes)]
+
+
 _FIELD_CODES = {"%f", "%F", "%u", "%U", "%d", "%D", "%n", "%N", "%i", "%c", "%k", "%v", "%m"}
 
 
@@ -153,12 +175,18 @@ class LinuxAdapter(PlatformAdapter):
 
     def type_text(self, text: str) -> None:
         if not self.x11:
-            raise unsupported("Typing into other apps on Wayland")
+            if shutil.which("ydotool"):
+                self._run(["ydotool", "type", "--", text], timeout=60)
+                return
+            raise VicoError(ErrorCode.UNSUPPORTED, WAYLAND_HELP)
         self._run(["xdotool", "type", "--delay", "15", "--", text], timeout=60)
 
     def press_keys(self, keys: str) -> None:
         if not self.x11:
-            raise unsupported("Pressing keys in other apps on Wayland")
+            if shutil.which("ydotool"):
+                self._run(["ydotool", "key", *ydotool_keys(keys)])
+                return
+            raise VicoError(ErrorCode.UNSUPPORTED, WAYLAND_HELP)
         chord = "+".join(p.strip() for p in keys.replace(" ", "+").split("+") if p.strip())
         chord = chord.replace("enter", "Return").replace("esc", "Escape")
         self._run(["xdotool", "key", "--", chord])

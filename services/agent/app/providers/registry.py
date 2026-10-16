@@ -280,6 +280,24 @@ class ProviderHub:
         return {"text": translation.strip(), "provider": completion.provider, "model": completion.model,
                 "latency_ms": completion.latency_ms}
 
+    def can_see(self) -> bool:
+        return bool(self.settings().cloud_consent and any(hasattr(p, "see") for p in self._chain("llm")))
+
+    async def see(self, image_jpeg: bytes, question: str) -> str:
+        """Look at a screenshot (providers that can see images: Gemini)."""
+        self.require_consent()
+        errors: list[VicoError] = []
+        for provider in [p for p in self._chain("llm") if hasattr(p, "see")]:
+            try:
+                return str(await provider.see(image_jpeg, question))
+            except VicoError as exc:
+                if exc.code not in FALLBACK_CODES:
+                    raise
+                errors.append(exc)
+        if errors:
+            raise errors[-1]
+        raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "Looking at the screen needs a Gemini access code.")
+
     async def summarize(self, text: str, language: str) -> str:
         lang = LANGUAGE_NAMES.get(language, "English")  # type: ignore[call-overload]
         completion = await self.complete(SUMMARY_SYSTEM.format(language=lang),

@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pydantic import Field
+
 from app.agent.schemas import (
     BrowserClickArgs,
     BrowserReadArgs,
@@ -22,7 +24,7 @@ from app.agent.schemas import (
     NoArgs,
     UrlArgs,
 )
-from app.contracts import ErrorCode, VicoError
+from app.contracts import ErrorCode, StrictModel, VicoError
 from app.security.guards import is_payment_action, is_secret_field, is_send_action, payment_or_secret_reason
 from app.tools.base import Inspection, Risk, ToolContext, ToolResult, ToolSpec, fail
 
@@ -399,6 +401,39 @@ async def browser_back(ctx: ToolContext, a: NoArgs) -> ToolResult:
     return await _guard(go)
 
 
+class BrowserUploadArgs(StrictModel):
+    target: str = Field(min_length=1, max_length=200)  # the attach/upload button or file field
+    files: list[str] = Field(min_length=1, max_length=10)
+
+
+async def inspect_upload(ctx: ToolContext, a: BrowserUploadArgs) -> Inspection:
+    paths = [ctx.paths.resolve(f) for f in a.files]
+    for p in paths:
+        if not p.is_file():
+            raise VicoError(ErrorCode.NOT_FOUND, f"{p.name} was not found.", status=404)
+    page = await _browser(ctx).page(create=False)
+    return Inspection(effect=f"Attach {', '.join(p.name for p in paths)} on {page.url}", targets=[str(p) for p in paths],
+                      label=a.target)
+
+
+async def browser_upload(ctx: ToolContext, a: BrowserUploadArgs) -> ToolResult:
+    b = _browser(ctx)
+    paths = [str(ctx.paths.resolve(f)) for f in a.files]
+
+    async def go() -> ToolResult:
+        page = await b.page(create=False)
+        inputs = page.locator("input[type=file]")
+        if await inputs.count() and not a.target.startswith("css="):
+            await inputs.first.set_input_files(paths, timeout=10000)
+        else:
+            async with page.expect_file_chooser(timeout=10000) as chooser:
+                await (await b.locate(a.target, "click")).click(timeout=10000)
+            await (await chooser.value).set_files(paths)
+        return await _page_result(b, f"Attached {len(paths)} file(s).")
+
+    return await _guard(go)
+
+
 def specs() -> list[ToolSpec]:
     web = "web"
     return [
@@ -419,4 +454,7 @@ def specs() -> list[ToolSpec]:
                  browser_scroll, inspect_scroll, web),
         ToolSpec("browser_back", "Go back to the previous page.", NoArgs, Risk.STANDARD, browser_back,
                  inspect_back, web),
+        ToolSpec("browser_upload", "Attach files on the page (e.g. Gmail's paperclip, a form's upload field): "
+                 "target is the attach button's label or 'css=<selector>'.", BrowserUploadArgs, Risk.STANDARD,
+                 browser_upload, inspect_upload, web),
     ]
