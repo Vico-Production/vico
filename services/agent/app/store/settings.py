@@ -11,7 +11,7 @@ from app.config import DEFAULT_MAX_STEPS, default_workspace
 from app.contracts import StrictModel
 from app.store.db import Database
 
-ProviderName = Literal["groq", "gemini", "none"]
+ProviderName = Literal["gemini", "groq", "mistral", "openrouter", "none"]
 LookName = Literal["peek", "possession", "yoyo", "swarm", "runner", "lens"]
 SpotName = Literal["peek", "yoyo", "possession_label", "swarm", "runner", "lens"]
 

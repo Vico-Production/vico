@@ -61,7 +61,7 @@ class OmnilingualProvider:
     def cooldown_s(self) -> float:
         return self.server.quota.cooldown_s()
 
-    async def transcribe(self, audio: bytes, mime: str, language: str | None) -> Transcript:
+    async def transcribe(self, audio: bytes, mime: str, language: str | None, hints: list[str] | None = None) -> Transcript:
         if "wav" not in mime:
             raise VicoError(ErrorCode.UNSUPPORTED, "The speech server accepts WAV audio only.")
         params = {"language": language} if language else None

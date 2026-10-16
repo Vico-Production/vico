@@ -23,18 +23,22 @@ from app.contracts import LANGUAGE_NAMES, ErrorCode, ProviderStatus, VicoError
 from app.providers import tts
 from app.providers.base import QuotaTracker, normalize_language, parse_json_text, provider_status
 from app.providers.gemini import GeminiProvider
-from app.providers.groq import GroqProvider
+from app.providers.groq import GroqProvider, MistralProvider, OpenRouterProvider
 from app.providers.speech_server import OmnilingualProvider, SpeechServer, VoiceProvider
 from app.security.secret_store import SecretStore
 from app.store.settings import Settings
 
-PROVIDERS = ("groq", "gemini")
-# Keys the user can store: the two cloud providers and the token of their own speech server.
-SECRET_NAMES = ("groq", "gemini", "speech_server")
-# Speech-to-text order: Gemini, then Meta Omnilingual ASR on the user's speech server,
-# then Groq Whisper (English only). A setting can move one of them to the front.
-STT_ORDER = ("gemini", "omnilingual", "groq")
-HOSTS = {"groq": "api.groq.com", "gemini": "generativelanguage.googleapis.com"}
+# Understanding order: Gemini, then each free fallback. A setting can move one to the front.
+PROVIDERS = ("gemini", "groq", "mistral", "openrouter")
+PROVIDER_CLASSES: dict[str, Any] = {"gemini": GeminiProvider, "groq": GroqProvider, "mistral": MistralProvider,
+                                    "openrouter": OpenRouterProvider}
+# Keys the user can store: the cloud providers and the token of their own speech server.
+SECRET_NAMES = (*PROVIDERS, "speech_server")
+# Speech-to-text order: Gemini, the user's speech server, Groq Whisper, Mistral Voxtral (English).
+STT_ORDER = ("gemini", "omnilingual", "groq", "mistral")
+HOSTS = {"groq": "api.groq.com", "gemini": "generativelanguage.googleapis.com", "mistral": "api.mistral.ai",
+         "openrouter": "openrouter.ai"}
+HEDGE_AFTER_S = 5.0  # a slow speech provider gets company: the next one starts too, first answer wins
 FALLBACK_CODES = {ErrorCode.OFFLINE, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED, ErrorCode.PROVIDER_UNAVAILABLE}
 T = TypeVar("T")
 
@@ -87,7 +91,9 @@ class ProviderHub:
         cached = self._cache.get(name)
         if cached and cached[0] == fingerprint:
             return cached[1]
-        cls = GroqProvider if name == "groq" else GeminiProvider
+        cls = PROVIDER_CLASSES.get(name)
+        if cls is None:
+            return None
         instance = cls(key, self.client, self.quotas[name], stt_model=stt_model, llm_model=llm_model)
         self._cache[name] = (fingerprint, instance)
         return instance
@@ -107,6 +113,8 @@ class ProviderHub:
             order = STT_ORDER if role == "stt" else PROVIDERS
             names += [n for n in order if n not in names]
         chain = [p for p in (self.provider(n) for n in names) if p is not None]
+        if role == "stt":
+            chain = [p for p in chain if getattr(p, "stt_languages", True) is not None]
         return chain
 
     def require_consent(self) -> None:
@@ -142,8 +150,50 @@ class ProviderHub:
     def has_role(self, role: str) -> bool:
         return bool(self.settings().cloud_consent and self._chain(role))
 
-    async def transcribe(self, audio: bytes, mime: str, language: str | None):
-        return await self._run("stt", lambda p: p.transcribe(audio, mime, language))
+    async def transcribe(self, audio: bytes, mime: str, language: str | None, hints: list[str] | None = None):
+        """Speech to text. If the first provider is slow, the next one starts alongside it and the
+        first good answer is used, so one slow or failing key never leaves the user waiting."""
+        self.require_consent()
+        chain = self._chain("stt")
+        if not chain:
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE,
+                            "No cloud provider is set up. Add a free API key in Settings, or use typed offline "
+                            "commands.", status=503)
+        pending: set[asyncio.Task] = set()
+        errors: list[VicoError] = []
+        queue = list(chain)
+
+        def launch() -> None:
+            provider = queue.pop(0)
+            pending.add(asyncio.ensure_future(provider.transcribe(audio, mime, language, hints=hints)))
+
+        launch()
+        try:
+            while pending:
+                done, _ = await asyncio.wait(pending, timeout=HEDGE_AFTER_S if queue else None,
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if not done:
+                    launch()  # still waiting: start the next provider too
+                    continue
+                for task in done:
+                    pending.discard(task)
+                    exc = task.exception()
+                    if exc is None:
+                        return task.result()
+                    if not isinstance(exc, VicoError) or exc.code not in FALLBACK_CODES:
+                        raise exc
+                    errors.append(exc)
+                if not pending and queue:
+                    launch()
+        finally:
+            for task in pending:
+                task.cancel()
+        limited = [e for e in errors if e.code is ErrorCode.RATE_LIMITED and e.retry_after_s]
+        if limited:
+            soonest = min(limited, key=lambda e: e.retry_after_s or 0)
+            raise VicoError(ErrorCode.RATE_LIMITED, soonest.message, retryable=True,
+                            retry_after_s=soonest.retry_after_s, status=429)
+        raise errors[-1]
 
     async def complete(self, system: str, user: str, json_mode: bool = True):
         return await self._run("llm", lambda p: p.complete(system, user, json_mode=json_mode))

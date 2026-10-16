@@ -20,6 +20,7 @@ from pydantic import Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.agent.orchestrator import Orchestrator
+from app.audio.clean import clean as clean_audio
 from app.audio.endpoint import Endpointer
 from app.audio.recorder import Recorder
 from app.audio.wake import WakeWord
@@ -114,6 +115,26 @@ def build_services(*, secrets: SecretStore | None = None, hub_overrides: dict[st
         if os.environ.get("VICO_WAKE", "1") != "0":
             wake = WakeWord(recorder, on_stop=lambda: bool(orchestrator.stop_all()))
     return Services(db, settings, history, secrets, hub, orchestrator, recorder, browser, platform, wake)
+
+
+def speech_hints(s: Services) -> list[str]:
+    """Names the user is likely to say, so they are spelled right ("Claude", not "cloud"):
+    installed apps and the titles of open windows. Read on this computer, sent with the audio."""
+    names: list[str] = []
+    try:
+        names += [e.name for e in s.platform.cached_apps()]
+        names += list(s.platform.builtin_apps())
+    except Exception:  # noqa: S110 - hints are optional
+        pass
+    try:
+        names += [w.title.split(" - ")[-1].strip() for w in s.platform.list_windows()][:20]
+    except Exception:  # noqa: S110 - window titles are optional
+        pass
+    seen: dict[str, str] = {}
+    for name in names:
+        if 2 <= len(name) <= 40 and name.lower() not in seen:
+            seen[name.lower()] = name
+    return list(seen.values())
 
 
 def sync_wake(s: Services) -> None:
@@ -366,7 +387,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
                 wav, seconds = s.recorder.stop()
                 job["stage"] = "transcribing"
                 try:
-                    transcript = await s.hub.transcribe(wav, "audio/wav", language)
+                    transcript = await s.hub.transcribe(clean_audio(wav), "audio/wav", language, hints=speech_hints(s))
                 finally:
                     del wav  # audio is never kept after transcription
                 job["result"] = {"seconds": round(seconds, 1), "transcript": {
@@ -430,7 +451,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         if not body.transcribe:
             return ok({"seconds": round(seconds, 1), "transcript": None})
         try:
-            transcript = await s.hub.transcribe(wav, "audio/wav", language)
+            transcript = await s.hub.transcribe(clean_audio(wav), "audio/wav", language, hints=speech_hints(s))
         finally:
             del wav  # audio is never kept after transcription
         return ok({"seconds": round(seconds, 1), "transcript": {

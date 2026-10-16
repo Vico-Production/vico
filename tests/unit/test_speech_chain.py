@@ -9,7 +9,6 @@ import pytest
 from app.agent.language import safe_restoration, strip_diacritics
 from app.contracts import VicoError
 from app.providers.base import QuotaTracker
-from app.providers.groq import GroqProvider
 from app.providers.mock import MockProvider
 from app.providers.registry import ProviderHub
 from app.providers.speech_server import OmnilingualProvider, SpeechServer, VoiceProvider, _clean_url
@@ -92,7 +91,7 @@ async def test_stt_chain_is_gemini_then_omnilingual_then_groq():
             super().__init__()
             self.label, self.fail = name, fail
 
-        async def transcribe(self, audio, mime, language):
+        async def transcribe(self, audio, mime, language, hints=None):
             order.append(self.label)
             if self.fail:
                 raise self.fail
@@ -110,17 +109,27 @@ async def test_stt_chain_is_gemini_then_omnilingual_then_groq():
     assert order == ["gemini", "omnilingual", "groq"]
 
 
-async def test_groq_whisper_is_english_only():
-    def handler(request):
-        if request.url.path.endswith("/models"):
-            return httpx.Response(200, json={"data": [{"id": "whisper-large-v3"}]})
-        return httpx.Response(200, json={"text": "Bawo ni", "language": "yoruba"})
+async def test_a_slow_speech_provider_gets_company(monkeypatch):
+    import asyncio
 
-    groq = GroqProvider("gsk", httpx.AsyncClient(transport=httpx.MockTransport(handler)), QuotaTracker())
-    with pytest.raises(VicoError):
-        await groq.transcribe(WAV, "audio/wav", "yo")
-    with pytest.raises(VicoError):  # auto-detected Yoruba is not accepted from Whisper
-        await groq.transcribe(WAV, "audio/wav", None)
+    import app.providers.registry as registry
+
+    monkeypatch.setattr(registry, "HEDGE_AFTER_S", 0.05)
+
+    class Slow(MockProvider):
+        async def transcribe(self, audio, mime, language, hints=None):
+            await asyncio.sleep(5)
+            raise AssertionError("never waited for")
+
+    class Quick(MockProvider):
+        async def transcribe(self, audio, mime, language, hints=None):
+            t = await super().transcribe(audio, mime, language)
+            t.text = "open claude"
+            return t
+
+    h = hub({"gemini": Slow(), "groq": Quick()})
+    t = await asyncio.wait_for(h.transcribe(WAV, "audio/wav", None, hints=["Claude"]), 2)
+    assert t.text == "open claude"
 
 
 class FakeGemini:

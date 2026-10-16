@@ -17,6 +17,9 @@ dependencies = [
     "pywinauto>=0.6.8; sys_platform == 'win32'",
     "tzdata>=2024.1",
     "vosk>=0.3.45",
+    "numpy>=2.0",
+    "pillow>=10.4",
+    "pycaw>=20240316 ; sys_platform == 'win32'",
 ]
 
 [dependency-groups]

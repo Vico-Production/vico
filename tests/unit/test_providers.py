@@ -42,19 +42,21 @@ async def test_groq_picks_models_from_live_list_and_transcribes():
     assert b'name="language"\r\n\r\nen' in seen["body"]
 
 
-@pytest.mark.parametrize("language", ["yo", "ha", "ig", "pcm"])
-async def test_groq_whisper_is_not_used_for_nigerian_languages(language):
+@pytest.mark.parametrize("language,told", [("yo", True), ("ha", True), ("ig", False), ("pcm", False)])
+async def test_groq_whisper_is_a_fallback_for_every_language(language, told):
     bodies = []
 
     def handler(request):
         if request.url.path.endswith("/models"):
             return httpx.Response(200, json=GROQ_MODELS)
         bodies.append(request.content)
-        return httpx.Response(200, json={"text": "ok"})
+        return httpx.Response(200, json={"text": "ok", "language": language})
 
-    with pytest.raises(VicoError) as exc:
-        await groq(handler).transcribe(b"x" * 100, "audio/wav", language)
-    assert exc.value.code == "provider_unavailable" and bodies == []  # no audio was sent
+    t = await groq(handler).transcribe(b"x" * 100, "audio/wav", language, hints=["Claude", "WhatsApp"])
+    assert t.text == "ok" and t.language == language
+    # Whisper has no Igbo or Pidgin code: it detects those itself
+    assert (f'name="language"\r\n\r\n{language}'.encode() in bodies[0]) is told
+    assert b"Vico. Claude, WhatsApp." in bodies[0]  # names spelled right
 
 
 async def test_groq_chat_json_mode():

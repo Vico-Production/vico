@@ -165,10 +165,15 @@ class GeminiProvider:
         return Completion(text=text, provider=self.name, model=model,
                           latency_ms=int((time.monotonic() - started) * 1000))
 
-    async def transcribe(self, audio: bytes, mime: str, language: str | None) -> Transcript:
+    async def transcribe(self, audio: bytes, mime: str, language: str | None,
+                         hints: list[str] | None = None) -> Transcript:
         prompt = TRANSCRIBE_PROMPT
         if language:
             prompt += f" The speaker said they are using language code '{language}'."
+        if hints:
+            names = ", ".join(hints[:200])
+            prompt += (" Names on this computer the speaker may say (spell them exactly like this when they are "
+                       f"said, never replace a word with one of them unless it was said): {names}.")
         body = {"contents": [{"role": "user", "parts": [
             {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode("ascii")}},
             {"text": prompt}]}], "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}

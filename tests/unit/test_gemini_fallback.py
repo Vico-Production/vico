@@ -105,16 +105,41 @@ async def test_groq_chain_switches_models_too():
 
     def handler(request: httpx.Request):
         if request.url.path.endswith("/models"):
-            return httpx.Response(200, json={"data": [{"id": "llama-3.3-70b-versatile"}, {"id": "openai/gpt-oss-120b"}]})
+            return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.8-27b"}, {"id": "openai/gpt-oss-120b"}]})
         model = json.loads(request.content)["model"]
         calls.append(model)
-        if model == "llama-3.3-70b-versatile":
+        if model == "openai/gpt-oss-120b":
             return httpx.Response(429, headers={"retry-after": "12"})
         return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
 
     p = GroqProvider("gsk_test", httpx.AsyncClient(transport=httpx.MockTransport(handler)), QuotaTracker())
     c = await p.complete("s", "u", json_mode=True)
-    assert c.model == "openai/gpt-oss-120b" and calls == ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
+    assert c.model == "qwen/qwen3.8-27b" and calls == ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+
+
+async def test_mistral_and_openrouter_are_further_fallbacks():
+    from app.providers.groq import MistralProvider, OpenRouterProvider
+
+    seen = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/models"):
+            if "openrouter" in request.url.host:
+                return httpx.Response(200, json={"data": [{"id": "openai/gpt-oss-120b"},
+                                                          {"id": "openai/gpt-oss-120b:free"}]})
+            return httpx.Response(200, json={"data": [{"id": "mistral-embed"}, {"id": "mistral-small-latest"},
+                                                      {"id": "voxtral-mini-latest"}]})
+        body = json.loads(request.content) if request.content.startswith(b"{") else {}
+        seen.append((request.url.host, body.get("model"), "response_format" in body))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    assert (await MistralProvider("k", client, QuotaTracker()).complete("s", "u", json_mode=True)).model == \
+        "mistral-small-latest"
+    # OpenRouter: only free models, and no JSON mode flag (not every free model accepts it)
+    assert (await OpenRouterProvider("k", client, QuotaTracker()).complete("s", "u", json_mode=True)).model == \
+        "openai/gpt-oss-120b:free"
+    assert seen == [("api.mistral.ai", "mistral-small-latest", True), ("openrouter.ai", "openai/gpt-oss-120b:free", False)]
 
 
 async def test_hub_falls_back_to_groq_instantly_and_reports_soonest_cooldown():

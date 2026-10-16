@@ -36,6 +36,6 @@ class MockProvider:
         text = reply if isinstance(reply, str) else json.dumps(reply)
         return Completion(text=text, provider=self.name, model="mock-model", latency_ms=1)
 
-    async def transcribe(self, audio: bytes, mime: str, language: str) -> Transcript:
+    async def transcribe(self, audio: bytes, mime: str, language: str, hints: list[str] | None = None) -> Transcript:
         return Transcript(text=self.transcript, language=language, provider=self.name, model="mock-stt",
                           latency_ms=1)

@@ -157,7 +157,7 @@ def test_engine_decides_when_speech_ends_and_transcribes(monkeypatch):
 
     services = _build(secrets=SecretStore(MemorySecretBackend()), recorder=Recorder(lambda cb: Stream(cb)))
 
-    async def transcribe(wav, mime, language):
+    async def transcribe(wav, mime, language, hints=None):
         return Transcript(text="open notepad", language="en", provider="gemini", model="m", latency_ms=5)
 
     monkeypatch.setattr(services.hub, "transcribe", transcribe)
