@@ -49,21 +49,23 @@ async def test_writes_run_when_switch_off(registry, ctx):
 @pytest.mark.parametrize("tool,args", [
     ("run_command", {"command": "echo hi"}),
     ("summarize_document", {"path": "notes.txt"}),
+    ("delete_path", {"path": "notes.txt"}),
 ])
-async def test_confirm_tools_always_ask_even_with_switch_off(registry, ctx, roots, tool, args):
+async def test_risky_tools_ask_only_while_asking_is_on(registry, ctx, roots, tool, args):
     _, workspace = roots
     (workspace / "notes.txt").write_text("hello", encoding="utf-8")
-    ctx.settings.require_approval = False
-    pf = await preflight(registry, ctx, tool, args)
-    assert pf.decision.outcome is Outcome.CONFIRM_REQUIRED
+    ctx.settings.require_approval = True
+    assert (await preflight(registry, ctx, tool, args)).decision.outcome is Outcome.CONFIRM_REQUIRED
+    ctx.settings.require_approval = False  # the user switched asking off: nothing is asked
+    assert (await preflight(registry, ctx, tool, args)).decision.outcome is Outcome.ALLOWED
+    ctx.tainted = True  # ...except right after reading a page or file, which could hijack Vico
+    assert (await preflight(registry, ctx, tool, args)).decision.outcome is Outcome.CONFIRM_REQUIRED
 
 
-async def test_delete_always_asks(registry, ctx, roots):
-    _, workspace = roots
-    (workspace / "old.txt").write_text("x", encoding="utf-8")
+async def test_ordinary_steps_never_ask_when_asking_is_off_even_after_reading(registry, ctx):
     ctx.settings.require_approval = False
-    pf = await preflight(registry, ctx, "delete_path", {"path": "old.txt"})
-    assert pf.decision.outcome is Outcome.CONFIRM_REQUIRED
+    ctx.tainted = True
+    assert (await preflight(registry, ctx, "create_folder", {"path": "New"})).decision.outcome is Outcome.ALLOWED
 
 
 async def test_typing_card_number_is_denied(registry, ctx):

@@ -17,6 +17,7 @@ from app.contracts import ErrorCode, VicoError
 class AppEntry:
     name: str
     target: str  # executable, shortcut, .desktop id or app bundle
+    desktop_id: str | None = None  # Linux: the launcher file's name, for gtk-launch
 
 
 @dataclass
@@ -87,7 +88,23 @@ class PlatformAdapter:
         exact = [e for e in unique if e.name.lower() == q]
         starts = [e for e in unique if e.name.lower().startswith(q) and e not in exact]
         contains = [e for e in unique if q in e.name.lower() and e not in exact and e not in starts]
+        # "Claude desktop", "the Spotify app": every word of a longer name must be in the app's name.
+        words = [w for w in q.replace("app", " ").split() if w not in ("the", "desktop", "my")]
+        if not (exact or starts or contains) and words:
+            contains = [e for e in unique if all(w in e.name.lower() for w in words)]
         return exact + starts + contains
+
+    def similar_apps(self, query: str, limit: int = 4) -> list[str]:
+        """Installed apps whose names sound close to `query` (for asking, never for opening)."""
+        import difflib
+
+        names = {e.name for e in [AppEntry(n, c[0]) for n, c in self.builtin_apps().items()] + self.cached_apps()}
+        lowered = {n.lower(): n for n in names}
+        q = query.strip().lower()
+        close = difflib.get_close_matches(q, list(lowered), n=limit, cutoff=0.5)
+        for word in q.split():
+            close += difflib.get_close_matches(word, list(lowered), n=2, cutoff=0.7)
+        return list(dict.fromkeys(lowered[c] for c in close))[:limit]
 
     def launch_app(self, entry: AppEntry) -> int | None:
         builtin = self.builtin_apps().get(entry.name.lower())

@@ -40,12 +40,18 @@ WAKE_WORD = "vico"
 # Tested with Windows' David and Zira voices (28 of 28 right): "Hey Vico", "Vico wassup",
 # "Vico how far", "Vico open notepad" and "Okay Vico" wake it; "the vehicle", "play the video",
 # "Hey Victor", "Hey Rico", "Victoria is here" and "vicious dog" do not.
-GRAMMAR = [WAKE_WORD, "vehicle", "video", "victor", "vicky", "rico", "vicious", "victoria", "[unk]"]
+GRAMMAR = [WAKE_WORD, "vehicle", "video", "victor", "vicky", "rico", "vicious", "victoria",
+           "stop", "cancel", "abort", "wait", "[unk]"]
+STOP_WORDS = {"stop", "cancel", "abort", "wait"}
 CLAIM_SECONDS = 4.0  # a wake the desktop app never picks up is dropped after this long
 
 
 def is_wake(text: str) -> bool:
     return WAKE_WORD in str(text).lower().split()
+
+
+def is_stop(text: str) -> bool:
+    return bool(STOP_WORDS & set(str(text).lower().split()))
 
 
 def model_dir() -> Path:
@@ -93,8 +99,11 @@ class WakeWord:
 
     def __init__(self, recorder: Recorder, *, stream_factory: Callable[..., Any] | None = None,
                  recognizer_factory: Callable[[Path], Any] | None = None,
-                 prepare: Callable[[Path], None] | None = None):
+                 prepare: Callable[[Path], None] | None = None,
+                 on_stop: Callable[[], bool] | None = None):
         self.recorder = recorder
+        # Called when "stop" is heard; returns True if a task was running (and is now stopped).
+        self.on_stop = on_stop
         self._open_stream = stream_factory or _default_stream
         self._make_recognizer = recognizer_factory or _vosk_recognizer
         self._prepare = prepare or download_model
@@ -107,6 +116,7 @@ class WakeWord:
         self.state = "off"  # off | preparing | listening | paused | unavailable
         self.error: str | None = None
         self._woke_at = 0.0  # monotonic time of an unclaimed wake, 0 if none
+        self.stopped_at = 0.0  # when "stop" last stopped a task (the desktop app shows it)
         self._wake_id = 0
         recorder.add_listener(self._recorder_busy)
 
@@ -216,7 +226,11 @@ class WakeWord:
                 text = json.loads(recognizer.Result()).get("text", "")
             else:
                 text = json.loads(recognizer.PartialResult()).get("partial", "")
-            if is_wake(text):
+            if is_stop(text) and self.on_stop is not None and self.on_stop():
+                recognizer.Reset()  # stopped: don't also treat "Vico stop" as a call
+                self.stopped_at = time.monotonic()
+                continue
+            if is_wake(text) and not is_stop(text):
                 self._wake()
 
     def _wake(self) -> None:

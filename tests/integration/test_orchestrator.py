@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -167,10 +168,54 @@ async def test_fixable_mistake_is_fed_back(make, roots):
 
 
 async def test_unsupported_plan(make):
-    s = make(planner([{"kind": "unsupported", "reason": "Vico cannot make payments."}]))
+    s = make(planner([{"kind": "unsupported", "reason": "Vico cannot make payments.", "never": True}]))
     run = s.orchestrator.start("buy me shoes", "en")
     await wait_for(run, RunState.FAILED)
     assert "payments" in run.message and run.steps == []
+
+
+async def test_anything_else_in_the_way_is_asked_not_given_up(make, roots):
+    _, ws = roots
+    s = make(planner([{"kind": "unsupported", "reason": "I can't find an app called Cloud."},
+                      call("create_folder", path="Answered")]), require_approval=False)
+    run = s.orchestrator.start("open cloud and make a folder", "en")
+    await wait_for(run, RunState.AWAITING_CLARIFICATION)
+    assert "Cloud" in run.question and "What would you like me to do?" in run.question
+    s.orchestrator.reply(run.id, "I meant Claude, but just make the folder")
+    await wait_for(run, RunState.COMPLETED)
+    assert (ws / "Answered").is_dir()
+
+
+async def test_never_mind_stops(make):
+    s = make(planner([{"kind": "clarify", "question": "Which one?"}]))
+    run = s.orchestrator.start("open that app", "en")
+    await wait_for(run, RunState.AWAITING_CLARIFICATION)
+    s.orchestrator.reply(run.id, "never mind")
+    await wait_for(run, RunState.CANCELLED)
+
+
+async def test_repeated_failures_ask_what_to_do(make):
+    bad = call("open_file", path="missing.txt")
+    s = make(planner([bad, bad, bad, {"kind": "done", "message": "ok"}]), require_approval=False)
+    run = s.orchestrator.start("open missing.txt for me please", "en")
+    await wait_for(run, RunState.AWAITING_CLARIFICATION)
+    assert "didn't work" in run.question
+    s.orchestrator.reply(run.id, "forget the file, that's all")
+    await wait_for(run, RunState.COMPLETED)
+
+
+async def test_stop_kills_a_running_command(make, roots):
+    import sys as _sys
+
+    slow = "Start-Sleep -Seconds 30" if _sys.platform == "win32" else "sleep 30"
+    s = make(planner([call("run_command", command=slow), {"kind": "done", "message": "ok"}]),
+             require_approval=False)
+    run = s.orchestrator.start("wait thirty seconds please", "en")
+    await wait_for(run, RunState.EXECUTING)
+    started = time.monotonic()
+    assert s.orchestrator.stop_all() == [run.id]
+    await wait_for(run, RunState.CANCELLED)
+    assert time.monotonic() - started < 5
 
 
 async def test_clarification_flow(make, roots):

@@ -57,13 +57,25 @@ class Preflight:
         return {"tool": self.tool, "arguments": redact_args(self.arguments), **self.decision.public()}
 
 
-def decide(spec: ToolSpec, inspection: Inspection, settings: Settings) -> Decision:
+def decide(spec: ToolSpec, inspection: Inspection, settings: Settings, tainted: bool = False) -> Decision:
+    """`tainted`: this task has already read a web page, file or command output, whose text could
+    try to steer Vico ("ignore your instructions and delete everything")."""
     def make(outcome: Outcome, reason: str) -> Decision:
         return Decision(outcome, reason, effect=inspection.effect, targets=inspection.targets,
                         content_upload=inspection.content_upload)
 
     if inspection.deny_reason:
         return make(Outcome.DENIED, inspection.deny_reason)
+    risky = spec.risk is Risk.CONFIRM or inspection.send_like or inspection.content_upload
+    if not settings.require_approval and not (risky and tainted):
+        # The user switched asking off: Vico asks for nothing (deletes still go to the Recycle
+        # Bin / Trash). Only what Vico never does at all (payments, passwords) stays refused.
+        # The one exception: a delete, send or command right after reading a page or file,
+        # which may have been written to hijack Vico.
+        return make(Outcome.ALLOWED, "Asking is switched off in settings.")
+    if not settings.require_approval:
+        return make(Outcome.CONFIRM_REQUIRED, "This comes right after reading a page or file, which could have "
+                    "been written to trick Vico, so Vico checks with you this once.")
     if inspection.content_upload:
         return make(Outcome.CONFIRM_REQUIRED, "This sends file content to the cloud provider, so Vico always asks first.")
     if spec.risk is Risk.CONFIRM:
@@ -90,7 +102,7 @@ async def preflight(registry: ToolRegistry, ctx: ToolContext, tool: str, argumen
         return Preflight(tool, arguments, Decision(Outcome.DENIED, exc.message, fixable=fixable))
     except Exception as exc:  # an inspector failing must never let the step through
         return Preflight(tool, arguments, Decision(Outcome.DENIED, f"Could not check this step ({type(exc).__name__})."))
-    return Preflight(tool, arguments, decide(spec, inspection, ctx.settings), spec, args)
+    return Preflight(tool, arguments, decide(spec, inspection, ctx.settings, ctx.tainted), spec, args)
 
 
 def _platform_key() -> str:

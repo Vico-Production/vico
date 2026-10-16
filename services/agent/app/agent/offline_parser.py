@@ -15,7 +15,7 @@ _LOCATIONS = {
     "documents": "~/Documents", "my documents": "~/Documents",
     "downloads": "~/Downloads", "my downloads": "~/Downloads",
 }
-_KNOWN_APPS = {"notepad", "calculator", "calc", "paint", "file explorer", "explorer", "vs code", "vscode",
+_KNOWN_APPS = {"notepad", "calculator", "settings", "windows settings", "control panel", "calc", "paint", "file explorer", "explorer", "vs code", "vscode",
                "visual studio code", "task manager", "powershell", "command prompt", "terminal", "text editor"}
 _APP_ALIASES = {"calc": "calculator", "explorer": "file explorer", "vscode": "vs code"}
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -32,7 +33,7 @@ from app.agent.schemas import (
     parse_plan,
     split_meta,
 )
-from app.config import APPROVAL_TIMEOUT_S, MAX_CLARIFICATIONS, MAX_TEXT_INPUT_CHARS, TOOL_TIMEOUT_S, data_dir
+from app.config import APPROVAL_TIMEOUT_S, MAX_TEXT_INPUT_CHARS, TOOL_TIMEOUT_S, data_dir
 from app.contracts import TERMINAL_STATES, ErrorCode, Language, RunState, VicoError
 from app.platform.base import PlatformAdapter
 from app.providers.base import parse_json_text
@@ -46,6 +47,21 @@ from app.tools.base import Risk, ToolContext, ToolRegistry, ToolResult
 log = logging.getLogger(__name__)
 T = TypeVar("T")
 MAX_FAILED_STEPS = 3
+MAX_QUESTIONS = 6  # questions Vico may ask in one task before it stops
+# Answers that mean "stop" (any of the four languages and Pidgin).
+NEVER_MIND = re.compile(r"(?:never ?mind|forget it|cancel|stop|abort|leave it|no ?need|nothing|"
+                        r"make you leave am|forget am|no worry|fi s[ií]l[eẹ]̀?|bar shi|hapu ya)")
+ASK_WHAT_NEXT = {
+    "en": "What would you like me to do?", "pcm": "Wetin you wan make I do?",
+    "yo": "Kí ni o fẹ́ kí n ṣe?", "ha": "Me kake so in yi?", "ig": "Gịnị ka ịchọrọ ka m mee?",
+}
+STUCK = {
+    "en": "I tried a few ways and it didn't work. What should I do?",
+    "pcm": "I don try am different ways but e no work. Wetin I go do?",
+    "yo": "Mo gbìyànjú ní ọ̀nà mélòó kan, kò ṣiṣẹ́. Kí ni kí n ṣe?",
+    "ha": "Na gwada hanyoyi da dama amma bai yi aiki ba. Me zan yi?",
+    "ig": "Agbalịrị m ụzọ dị iche iche, ọ rụghị ọrụ. Gịnị ka m ga-eme?",
+}
 AUTO = "auto"  # language not given: detected from the request
 # Short rate limits (per-minute) are waited out and the task continues; longer ones
 # (the daily free quota) stop the task with a clear message.
@@ -235,6 +251,19 @@ class Orchestrator:
             run.cancel.set()
         return run
 
+    def stop_all(self) -> list[str]:
+        """The stop button: every unfinished task stops now, including a step in the middle of
+        running (a running command is killed). Returns the stopped tasks' ids."""
+        stopped = []
+        for run in self.runs.values():
+            if run.state not in TERMINAL_STATES:
+                run.cancel.set()
+                stopped.append(run.id)
+        return stopped
+
+    def busy(self) -> bool:
+        return any(r.state not in TERMINAL_STATES for r in self.runs.values())
+
     async def shutdown(self) -> None:
         for run in self.runs.values():
             run.cancel.set()
@@ -332,6 +361,24 @@ class Orchestrator:
                     run.cooldown_until = None
                 run.set_state(previous)
 
+    async def _ask(self, run: Run, question: str) -> str:
+        """Ask the user and wait for the answer (spoken or typed). "Never mind" stops the task;
+        no answer at all stops it too, with nothing further done."""
+        if len(run.clarifications) >= MAX_QUESTIONS:
+            raise VicoError(ErrorCode.UNSUPPORTED, "Vico still isn't sure what to do, so it stopped. Try again "
+                            "with different words.")
+        run.question = question
+        run.set_state(RunState.AWAITING_CLARIFICATION, question)
+        decision = await self._wait_decision(run)
+        run.question = None
+        if decision is None:
+            raise VicoError(ErrorCode.TIMEOUT, "No answer was given, so Vico stopped. Nothing further was done.")
+        answer = decision["answer"]
+        if NEVER_MIND.fullmatch(answer.strip().lower().strip(".!")):
+            raise Cancelled
+        run.clarifications.append({"question": question, "answer": answer})
+        return answer
+
     async def _wait_decision(self, run: Run) -> dict[str, Any] | None:
         run.decision = None
         run.decision_event.clear()
@@ -363,6 +410,10 @@ class Orchestrator:
         if step.status in ("succeeded", "unverified"):
             run.message = step.message
             run.set_state(RunState.COMPLETED, "Done")
+        elif step.status == "failed" and run.mode == "local" and self.hub.has_role("llm") and await self.hub.online():
+            # e.g. the app has another name: the AI sees what happened and finds it, or asks.
+            run.mode = "cloud"
+            await self._cloud(run, ctx, self.settings_repo.load())
         else:
             self._fail(run, ErrorCode.POLICY_DENIED if step.status == "denied" else ErrorCode.INTERNAL,
                        step.message or step.reason)
@@ -395,8 +446,8 @@ class Orchestrator:
                 tool_steps += len(plan.calls)
                 failures = failures + 1 if failed else 0
                 if failures >= MAX_FAILED_STEPS:
-                    self._fail(run, ErrorCode.INTERNAL, "Stopped after repeated failed steps.")
-                    return
+                    await self._ask(run, self._stuck_question(run))
+                    failures = 0
                 continue
             if isinstance(plan, ControlPlan):
                 asked = control.clean(plan.model_dump(exclude_none=True))
@@ -407,20 +458,14 @@ class Orchestrator:
                 run.set_state(RunState.COMPLETED, "Done")
                 return
             if isinstance(plan, UnsupportedPlan):
-                self._fail(run, ErrorCode.UNSUPPORTED, plan.reason)
-                return
+                if plan.never:  # payments, passwords, CAPTCHAs: Vico never does these
+                    self._fail(run, ErrorCode.UNSUPPORTED, plan.reason)
+                    return
+                # Anything else: say what is in the way and let the user decide, instead of giving up.
+                await self._ask(run, f"{plan.reason} {ASK_WHAT_NEXT.get(run.language, ASK_WHAT_NEXT['en'])}")
+                continue
             if isinstance(plan, ClarifyPlan):
-                if len(run.clarifications) >= MAX_CLARIFICATIONS:
-                    self._fail(run, ErrorCode.UNSUPPORTED, "Vico still isn't sure what to do. Try rephrasing.")
-                    return
-                run.question = plan.question
-                run.set_state(RunState.AWAITING_CLARIFICATION, plan.question)
-                decision = await self._wait_decision(run)
-                if decision is None:
-                    self._fail(run, ErrorCode.TIMEOUT, "No answer was given, so Vico stopped.")
-                    return
-                run.clarifications.append({"question": plan.question, "answer": decision["answer"]})
-                run.question = None
+                await self._ask(run, plan.question)
                 continue
 
             assert isinstance(plan, ToolCallPlan)
@@ -437,10 +482,16 @@ class Orchestrator:
             if step.status in ("failed", "denied"):
                 failures += 1
                 if failures >= MAX_FAILED_STEPS:
-                    self._fail(run, ErrorCode.INTERNAL, f"Stopped after {failures} failed steps: {step.message}")
-                    return
+                    await self._ask(run, self._stuck_question(run))
+                    failures = 0
             else:
                 failures = 0
+
+    @staticmethod
+    def _stuck_question(run: Run) -> str:
+        last = next((s for s in reversed(run.steps) if s.status in ("failed", "denied")), None)
+        why = f" The last try said: {last.message}" if last and last.message else ""
+        return STUCK.get(run.language, STUCK["en"]) + why
 
     async def _plan(self, run: Run, ctx: ToolContext) -> Plan:
         tools = [t.manifest() for t in self.registry.available(_platform_key(), online=True)]
@@ -506,6 +557,8 @@ class Orchestrator:
         for (step, _), result in zip(steps, results, strict=True):
             step.message, step.verification, step.verified = result.message, result.verification, result.verified
             step.data, step.observation = result.data, result.observation or result.message
+            if "<untrusted_content" in step.observation:
+                ctx.tainted = True
             step.status = "failed" if not result.ok else ("succeeded" if result.verified else "unverified")
             failed = failed or not result.ok
             self._record(run, step)
@@ -570,6 +623,8 @@ class Orchestrator:
         run.set_state(RunState.VERIFYING, step.tool)
         step.message, step.verification, step.verified = result.message, result.verification, result.verified
         step.data, step.observation = result.data, result.observation or result.message
+        if "<untrusted_content" in step.observation:
+            ctx.tainted = True  # later deletes, sends and commands in this task are checked with the user
         if not result.ok:
             step.status = "failed"
         else:

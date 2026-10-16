@@ -197,6 +197,9 @@ class ClarifyPlan(StrictModel):
 class UnsupportedPlan(StrictModel):
     kind: Literal["unsupported"]
     reason: str = Field(min_length=1, max_length=500)
+    # True only for what Vico must never do (payments, passwords, CAPTCHAs); otherwise Vico
+    # tells the user what is in the way and asks what to do.
+    never: bool = False
 
 
 class DonePlan(StrictModel):

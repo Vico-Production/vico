@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ from pathlib import Path
 from app.contracts import ErrorCode, VicoError
 from app.platform.base import AppEntry, PlatformAdapter, ScreenRect, WindowInfo, detached_kwargs
 
+APPS_FOLDER = "shell:AppsFolder\\"
 _PYWINAUTO_SPECIAL = set("+^%~(){}[]")
 _KEY_NAMES = {
     "enter": "{ENTER}", "return": "{ENTER}", "tab": "{TAB}", "esc": "{ESC}", "escape": "{ESC}",
@@ -63,6 +65,9 @@ class WindowsAdapter(PlatformAdapter):
             "task manager": ["taskmgr.exe"],
             "wordpad": ["write.exe"],
             "snipping tool": ["SnippingTool.exe"],
+            "settings": ["explorer.exe", "ms-settings:"],
+            "windows settings": ["explorer.exe", "ms-settings:"],
+            "control panel": ["control.exe"],
         }
         code = shutil.which("code")
         if code:
@@ -71,11 +76,13 @@ class WindowsAdapter(PlatformAdapter):
         return apps
 
     def discover_apps(self) -> list[AppEntry]:
+        """Every app the Start menu lists (Store/MSIX apps such as Claude and WhatsApp included),
+        plus shortcut files, which also cover older installers."""
+        entries = self._start_apps()
         roots = [
             Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Microsoft/Windows/Start Menu/Programs",
             Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs",
         ]
-        entries: list[AppEntry] = []
         for root in roots:
             if not root.is_dir():
                 continue
@@ -86,11 +93,38 @@ class WindowsAdapter(PlatformAdapter):
                 entries.append(AppEntry(name=name, target=str(lnk)))
         return entries
 
+    @staticmethod
+    def _start_apps() -> list[AppEntry]:
+        """Windows' own list of installed apps (Get-StartApps): name and AppUserModelID."""
+        script = ("[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
+                  "Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress")
+        try:
+            out = subprocess.run(  # noqa: S603 - fixed command
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],  # noqa: S607
+                capture_output=True, timeout=20, check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            data = json.loads(out.stdout.decode("utf-8", errors="replace") or "[]")
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return []
+        if isinstance(data, dict):
+            data = [data]
+        apps = []
+        for item in data if isinstance(data, list) else []:
+            name, app_id = item.get("Name"), item.get("AppID")
+            if not name or not app_id or any(w in name.lower() for w in ("uninstall", "readme", "help")):
+                continue
+            apps.append(AppEntry(name=name, target=f"{APPS_FOLDER}{app_id}"))
+        return apps
+
     def launch_app(self, entry: AppEntry) -> int | None:
         builtin = self.builtin_apps().get(entry.name.lower())
         if builtin:
             proc = subprocess.Popen(builtin, **detached_kwargs())  # noqa: S603 - fixed argv
             return proc.pid
+        if entry.target.startswith(APPS_FOLDER):
+            # Store and desktop apps alike start through the shell by their app ID.
+            subprocess.Popen(["explorer.exe", entry.target], **detached_kwargs())  # noqa: S603 S607
+            return None
         target = Path(entry.target)
         if target.suffix.lower() == ".lnk" and target.exists():
             os.startfile(str(target))  # type: ignore[attr-defined]  # noqa: S606 - Start Menu shortcut

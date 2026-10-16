@@ -11,9 +11,20 @@ from app.tools.base import Inspection, Risk, ToolContext, ToolResult, ToolSpec
 
 
 def _resolve_app(ctx: ToolContext, name: str) -> AppEntry:
+    """The one app `name` means. A guess is never opened: with no match, or several equally good
+    ones, Vico says what it found so it can ask the user."""
     matches = ctx.platform.find_apps(name)
     if not matches:
-        raise VicoError(ErrorCode.NOT_FOUND, f"No installed app matches '{name}'.", status=404)
+        similar = ctx.platform.similar_apps(name)
+        hint = f" Closest installed apps: {', '.join(similar)}. Ask the user which one they meant." if similar else (
+            " Ask the user for the app's exact name, or use list_apps to look for it.")
+        raise VicoError(ErrorCode.NOT_FOUND, f"No installed app is called '{name}'.{hint}", status=404)
+    q = name.strip().lower()
+    first = matches[0].name.lower()
+    if first != q and not first.startswith(q) and len(matches) > 1:
+        options = ", ".join(e.name for e in matches[:5])
+        raise VicoError(ErrorCode.NOT_FOUND, f"Several installed apps match '{name}': {options}. Ask the user "
+                        "which one they meant.", status=404)
     return matches[0]
 
 

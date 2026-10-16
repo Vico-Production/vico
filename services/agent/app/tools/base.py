@@ -50,6 +50,7 @@ class ToolContext:
     summarizer: Summarizer | None = None
     language: str = "en"
     cancel: asyncio.Event = field(default_factory=asyncio.Event)
+    tainted: bool = False  # this task has read untrusted text (a page, file or command output)
 
 
 @dataclass

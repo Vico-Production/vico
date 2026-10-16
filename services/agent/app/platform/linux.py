@@ -76,6 +76,7 @@ class LinuxAdapter(PlatformAdapter):
             "file manager": ["nautilus", "dolphin", "thunar", "nemo"],
             "terminal": ["gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator"],
             "vs code": ["code"],
+            "settings": ["gnome-control-center", "systemsettings", "xfce4-settings-manager", "cinnamon-settings"],
         }.items():
             found = next((c for c in candidates if shutil.which(c)), None)
             if found:
@@ -85,21 +86,31 @@ class LinuxAdapter(PlatformAdapter):
         return apps
 
     def discover_apps(self) -> list[AppEntry]:
-        dirs = [Path("/usr/share/applications"), Path("/usr/local/share/applications"),
-                Path.home() / ".local/share/applications", Path("/var/lib/flatpak/exports/share/applications")]
-        entries = []
-        for d in dirs:
-            if d.is_dir():
-                for f in d.glob("*.desktop"):
-                    entry = parse_desktop_file(f)
-                    if entry:
-                        entries.append(entry)
+        """Every app with a launcher: system and user .desktop files, snaps and flatpaks."""
+        data_dirs = [Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))]
+        data_dirs += [Path(p) for p in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":") if p]
+        data_dirs += [Path("/var/lib/snapd/desktop"), Path("/var/lib/flatpak/exports/share"),
+                      Path.home() / ".local/share/flatpak/exports/share"]
+        entries, seen = [], set()
+        for base in data_dirs:
+            d = base / "applications"
+            if not d.is_dir() or d in seen:
+                continue
+            seen.add(d)
+            for f in d.rglob("*.desktop"):
+                entry = parse_desktop_file(f)
+                if entry:
+                    entries.append(AppEntry(name=entry.name, target=entry.target, desktop_id=f.name))
         return entries
 
     def launch_app(self, entry: AppEntry) -> int | None:
         builtin = self.builtin_apps().get(entry.name.lower())
+        if not builtin and entry.desktop_id and shutil.which("gtk-launch"):
+            # Exactly as the app menu starts it (snaps, flatpaks and wrappers included).
+            return subprocess.Popen(["gtk-launch", entry.desktop_id.removesuffix(".desktop")],  # noqa: S603 S607
+                                    **detached_kwargs()).pid
         argv = builtin or exec_argv(entry.target)
-        if not argv or not shutil.which(argv[0]):
+        if not argv or not (shutil.which(argv[0]) or Path(argv[0]).exists()):
             raise VicoError(ErrorCode.NOT_FOUND, f"{entry.name} is not installed.", status=404)
         return subprocess.Popen(argv, **detached_kwargs()).pid  # noqa: S603 - argv from .desktop entry
 

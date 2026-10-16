@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import signal
 import subprocess
+import sys
 
 from app.agent.schemas import RunCommandArgs
 from app.config import COMMAND_TIMEOUT_S
@@ -12,6 +15,21 @@ from app.security.redaction import redact_text
 from app.tools.base import Inspection, Risk, ToolContext, ToolResult, ToolSpec, fail
 
 MAX_OUTPUT = 4000
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """Kill a command and everything it started."""
+    if proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],  # noqa: S603 S607
+                           capture_output=True, check=False, timeout=10,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        proc.kill()
 
 
 async def inspect_command(ctx: ToolContext, a: RunCommandArgs) -> Inspection:
@@ -30,18 +48,21 @@ async def run_command(ctx: ToolContext, a: RunCommandArgs) -> ToolResult:
     if not cwd.is_dir():
         return fail(f"{ctx.paths.display(cwd)} is not a folder.")
     argv = ctx.platform.shell_argv(a.command, a.shell)
-
-    def run() -> subprocess.CompletedProcess[str]:
-        return subprocess.run(  # noqa: S603 - user-approved command, argv form
-            argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=COMMAND_TIMEOUT_S, check=False, stdin=subprocess.DEVNULL,
-        )
-
+    proc = subprocess.Popen(  # noqa: S603 - user-approved command, argv form
+        argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+        text=True, encoding="utf-8", errors="replace",
+        **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32"  # type: ignore[attr-defined]
+           else {"start_new_session": True}),
+    )
     try:
-        proc = await asyncio.to_thread(run)
+        stdout, stderr = await asyncio.to_thread(proc.communicate, None, COMMAND_TIMEOUT_S)
     except subprocess.TimeoutExpired:
+        kill_tree(proc)
         return fail(f"The command did not finish within {COMMAND_TIMEOUT_S} seconds and was stopped.")
-    out = redact_text((proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else ""))
+    except asyncio.CancelledError:
+        kill_tree(proc)  # the user pressed stop: the command dies now, not when it finishes
+        raise
+    out = redact_text((stdout or "") + (("\n" + stderr) if stderr else ""))
     cut = len(out) > MAX_OUTPUT
     out = out[:MAX_OUTPUT]
     ok = proc.returncode == 0

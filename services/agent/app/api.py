@@ -112,7 +112,7 @@ def build_services(*, secrets: SecretStore | None = None, hub_overrides: dict[st
     if recorder is None:
         recorder = Recorder()
         if os.environ.get("VICO_WAKE", "1") != "0":
-            wake = WakeWord(recorder)
+            wake = WakeWord(recorder, on_stop=lambda: bool(orchestrator.stop_all()))
     return Services(db, settings, history, secrets, hub, orchestrator, recorder, browser, platform, wake)
 
 
@@ -295,6 +295,11 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         runs = svc(request).orchestrator.runs.values()
         latest = max(runs, key=lambda r: r.created, default=None)
         return ok(latest.public() if latest else None)
+
+    @app.post(f"{API_PREFIX}/agent/stop")
+    async def stop_everything(request: Request):
+        """The stop button (also "Vico, stop"): every unfinished task stops at once."""
+        return ok({"stopped": svc(request).orchestrator.stop_all()})
 
     @app.get(f"{API_PREFIX}/agent/runs/{{run_id}}/wait")
     async def wait_run(request: Request, run_id: str, after: int = -1, timeout: float = 15.0):
