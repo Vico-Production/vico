@@ -39,6 +39,10 @@ cd apps/desktop/src-tauri && cargo install cargo-about && cargo about generate a
 | Pillow | screenshots and cropping | MIT-CMU (HPND) |
 | NumPy | cleaning recordings | BSD-3-Clause |
 | pycaw | Windows volume control | MIT |
+| Kokoro-82M (downloaded on first use, from the kokoro-onnx project's release) | offline English voice | Apache-2.0 |
+| ONNX Runtime | running Kokoro | MIT |
+| misaki (pronunciation dictionaries only; no espeak-ng) | Kokoro pronunciation | Apache-2.0 |
+| Piper (only if the user installs it; not shipped) | optional offline voice | GPL-3.0 (separate program) |
 | NaijaVox-2.0 (optional, on the user's speech server) | Nigerian speech recognition | Apache-2.0 |
 | Mistral, OpenRouter, TinyFish (cloud APIs, user's own optional keys) | fallbacks and web search | each provider's terms |
 | Playwright for Python (bundles a Node.js driver) | browser control | Apache-2.0 |

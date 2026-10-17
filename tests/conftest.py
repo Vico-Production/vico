@@ -29,6 +29,13 @@ def isolated_data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("VICO_DATA_DIR", str(data))
     for name in ("GROQ", "GEMINI"):
         monkeypatch.delenv(f"VICO_{name}_API_KEY", raising=False)
+    # Offline voices are never downloaded or run in tests (tests that want them patch them in).
+    import app.providers.kokoro as kokoro
+    import app.providers.piper_voice as piper_voice
+
+    monkeypatch.setattr(kokoro, "speak", lambda text: None)
+    monkeypatch.setattr(kokoro, "prepare_in_background", lambda: None)
+    monkeypatch.setattr(piper_voice, "speak", lambda text: None)
     return data
 
 

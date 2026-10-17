@@ -8,6 +8,13 @@
   ${If} $0 = 1
     Delete "$DESKTOP\${PRODUCTNAME}.lnk"
   ${EndIf}
+  ; Vico opens by itself when installation finishes, on its setup screen, and starts with
+  ; Windows from then on (the same entry its "Start when I sign in" switch manages). Calling
+  ; it by name works once setup is done.
+  ${If} $UpdateMode <> 1
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}" '"$INSTDIR\${MAINBINARYNAME}.exe" --autostart'
+    nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
@@ -24,6 +31,13 @@
     Pop $0
     nsExec::Exec 'cmdkey /delete:speech_server@vico-desktop'
     Pop $0
+    nsExec::Exec 'cmdkey /delete:mistral@vico-desktop'
+    Pop $0
+    nsExec::Exec 'cmdkey /delete:openrouter@vico-desktop'
+    Pop $0
+    nsExec::Exec 'cmdkey /delete:tinyfish@vico-desktop'
+    Pop $0
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
     ; Settings, history, the chosen look, the wake-word model and the sign-in marker.
     SetShellVarContext current
     RMDir /r "$APPDATA\Vico"

@@ -29,6 +29,7 @@ from app.contracts import API_PREFIX, ErrorCode, Language, StrictModel, VicoErro
 from app.interpreter.languages import capabilities
 from app.platform import get_platform
 from app.platform.base import PlatformAdapter
+from app.providers import kokoro as kokoro_voice
 from app.providers import web as web_research
 from app.providers.registry import SECRET_NAMES, ProviderHub
 from app.providers.speech_server import _clean_url
@@ -146,8 +147,9 @@ def speech_hints(s: Services) -> list[str]:
 def sync_wake(s: Services) -> None:
     if s.wake is None:
         return
-    # On from the moment Vico is installed: saying "Vico" before setup opens the setup.
-    if s.settings.load().wake_word:
+    settings = s.settings.load()
+    # Called by name only once Vico is set up (before that, the shortcut or tray opens setup).
+    if settings.wake_word and settings.onboarding_complete:
         s.wake.enable()
     else:
         s.wake.disable()
@@ -181,6 +183,8 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         # Scan the Start Menu (or .desktop files) once now, not on the first "open ...".
         threading.Thread(target=app.state.services.platform.refresh_apps, daemon=True).start()
         threading.Thread(target=web_research.warm, daemon=True).start()
+        if app.state.services.settings.load().voice_replies:
+            kokoro_voice.prepare_in_background()
         sync_wake(app.state.services)
         yield
         warm.cancel()

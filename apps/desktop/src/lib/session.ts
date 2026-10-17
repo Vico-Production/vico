@@ -348,7 +348,10 @@ export class VicoDriver {
         const launch = await this.windows.launchInfo?.();
         if (launch) this.watchForWakePhrase(); // listening for "Vico" from the moment it is installed
         if (this.state.phase !== "hidden") return; // the user already summoned Vico
-        if (!settings.onboarding_complete) return this.set({ ...INITIAL, phase: "setup" });
+        if (!settings.onboarding_complete) {
+          if (launch?.autostart) return; // quiet start: setup appears when Vico is first called
+          return this.set({ ...INITIAL, phase: "setup" });
+        }
         if (launch && !launch.autostart) {
           // Opened by hand (or by the installer): show that Vico is running and how to call it.
           const call = launch.shortcut ? `press ${launch.shortcut}` : "click my tray icon";

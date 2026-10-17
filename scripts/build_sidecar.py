@@ -55,6 +55,8 @@ def main() -> None:
         "--collect-submodules", "ddgs",  # its search engines are loaded by name at run time
         "--hidden-import", "lxml.html",
         "--hidden-import", "PIL.ImageGrab",
+        "--collect-data", "misaki",  # Kokoro's pronunciation dictionaries
+        "--collect-binaries", "onnxruntime",
         "--add-data", f"{model}{os.pathsep}models/{model.name}",
         "--exclude-module", "tkinter",
         "--exclude-module", "pytest",

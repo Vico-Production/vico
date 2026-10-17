@@ -74,7 +74,10 @@
           "wmctrl",
           "gstreamer1.0-plugins-good",
           "espeak-ng"
-        ]
+        ],
+        "files": {
+          "/etc/xdg/autostart/vico.desktop": "linux/vico-autostart.desktop"
+        }
       },
       "rpm": {
         "depends": [
@@ -83,7 +86,10 @@
           "wmctrl",
           "gstreamer1-plugins-good",
           "espeak-ng"
-        ]
+        ],
+        "files": {
+          "/etc/xdg/autostart/vico.desktop": "linux/vico-autostart.desktop"
+        }
       }
     }
   }

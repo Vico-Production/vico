@@ -36,7 +36,7 @@ from app.agent.schemas import (
 from app.config import APPROVAL_TIMEOUT_S, MAX_TEXT_INPUT_CHARS, TOOL_TIMEOUT_S, data_dir
 from app.contracts import TERMINAL_STATES, ErrorCode, Language, RunState, VicoError
 from app.platform.base import PlatformAdapter
-from app.providers import web
+from app.providers import kokoro, web
 from app.providers.base import parse_json_text
 from app.providers.registry import ProviderHub
 from app.security.paths import PathPolicy
@@ -323,6 +323,8 @@ class Orchestrator:
         run.control = asked
         if asked["action"] == "voice":
             self.settings_repo.update(SettingsPatch(voice_replies=asked.get("value") == "on"))
+            if asked.get("value") == "on":
+                kokoro.prepare_in_background()  # the offline voice is ready before it is needed
         if run.language == AUTO:
             run.language = language if language in {lang.value for lang in Language} else Language.EN.value
         run.canonical = run.canonical or run.text

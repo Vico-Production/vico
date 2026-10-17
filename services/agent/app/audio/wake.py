@@ -41,6 +41,8 @@ WAKE_WORD = "vico"
 # "Vico how far", "Vico open notepad" and "Okay Vico" wake it; "the vehicle", "play the video",
 # "Hey Victor", "Hey Rico", "Victoria is here" and "vicious dog" do not.
 GRAMMAR = [WAKE_WORD, "vehicle", "video", "victor", "vicky", "rico", "vicious", "victoria",
+           # near misses measured on the wake bench ("big", "echo", "Pico", "we go" woke Vico before)
+           "big", "echo", "pico",
            "stop", "cancel", "abort", "wait", "[unk]"]
 STOP_WORDS = {"stop", "cancel", "abort", "wait"}
 CLAIM_SECONDS = 4.0  # a wake the desktop app never picks up is dropped after this long
@@ -91,7 +93,82 @@ def _vosk_recognizer(path: Path) -> Any:
     import vosk
 
     vosk.SetLogLevel(-1)
-    return vosk.KaldiRecognizer(vosk.Model(str(path)), SAMPLE_RATE, json.dumps(GRAMMAR))
+    recognizer = vosk.KaldiRecognizer(vosk.Model(str(path)), SAMPLE_RATE, json.dumps(GRAMMAR))
+    recognizer.SetWords(True)  # word confidences on final results
+    return recognizer
+
+
+TARGET_RMS = 1500.0  # the loudness (16-bit) soft speech is brought up to before recognition
+QUIET_RMS = 500.0  # below this a voice counts as soft (normal speech near a laptop is well above it)
+MAX_GAIN = 6.0  # never more than +16 dB, so a quiet room is not turned into loud hiss
+MIN_CONF = 0.55  # how sure the recognizer must be that "Vico" was said
+
+
+class WakeDetector:
+    """Hears "Vico" at any normal speaking volume, without waking for other words or noise.
+
+    - Automatic gain: quiet speech (said normally, or from across the room) is raised towards a
+      steady level before recognition; the room's own hiss is never raised above MAX_GAIN.
+    - "Vico" must be clearly heard: when a phrase ends, the recognizer's confidence in the word
+      is checked; a call mid-phrase ("Vico, open Notepad") wakes at once from the running
+      result, so the request that follows is recorded too.
+    """
+
+    def __init__(self, agc: bool = False, min_conf: float = MIN_CONF, partials: int = 2):
+        self.agc = agc
+        self.partials = partials
+        self.min_conf = min_conf
+        self.reset_state()
+
+    def reset_state(self) -> None:
+        self.gain = 1.0
+        self.floor = 0.0  # the room's level
+        self.seen_partial = 0  # consecutive running results with "vico"
+
+    def _level(self, data: bytes) -> bytes:
+        import numpy as np
+
+        x = np.frombuffer(data, dtype="<i2").astype(np.float32)
+        if x.size == 0:
+            return data
+        rms = float(np.sqrt(np.mean(x * x)) + 1e-6)
+        self.floor = rms if self.floor == 0 else min(rms, self.floor * 1.01 + 1.0)
+        if rms > self.floor * 2.0 and rms < QUIET_RMS:  # someone speaking softly: lift it
+            wanted = min(MAX_GAIN, max(1.0, TARGET_RMS / rms))
+            self.gain = wanted if wanted < self.gain else self.gain + (wanted - self.gain) * 0.3
+        elif rms >= QUIET_RMS:
+            self.gain = 1.0  # normal or loud speech is left exactly as it is
+        return np.clip(x * self.gain, -32768, 32767).astype("<i2").tobytes()
+
+    def hears(self, recognizer: Any, data: bytes) -> str:
+        """Feed a block; returns "wake", "stop" or "" for nothing."""
+        if self.agc:
+            data = self._level(data)
+        if recognizer.AcceptWaveform(data):
+            result = json.loads(recognizer.Result())
+            text = result.get("text", "")
+            self.seen_partial = 0
+            words = {w.get("word"): float(w.get("conf", 0)) for w in result.get("result", []) if isinstance(w, dict)}
+            if is_stop(text):
+                return "stop"
+            if is_wake(text) and words.get(WAKE_WORD, 1.0) >= self.min_conf:
+                return "wake"
+            return ""
+        text = json.loads(recognizer.PartialResult()).get("partial", "")
+        if is_stop(text):
+            return "stop"
+        if is_wake(text):
+            # Seen in two running results in a row: a real "Vico", not a passing near-miss.
+            self.seen_partial += 1
+            if self.seen_partial >= self.partials:
+                self.seen_partial = 0
+                return "wake"
+        else:
+            self.seen_partial = 0
+        return ""
+
+    def hears_wake(self, recognizer: Any, data: bytes) -> bool:
+        return self.hears(recognizer, data) == "wake"
 
 
 class WakeWord:
@@ -117,6 +194,7 @@ class WakeWord:
         self.error: str | None = None
         self._woke_at = 0.0  # monotonic time of an unclaimed wake, 0 if none
         self.stopped_at = 0.0  # when "stop" last stopped a task (the desktop app shows it)
+        self.detector = WakeDetector()
         self._wake_id = 0
         recorder.add_listener(self._recorder_busy)
 
@@ -222,15 +300,13 @@ class WakeWord:
                 recognizer = self._recognizer if self._stream is not None else None
             if recognizer is None:
                 continue
-            if recognizer.AcceptWaveform(data):
-                text = json.loads(recognizer.Result()).get("text", "")
-            else:
-                text = json.loads(recognizer.PartialResult()).get("partial", "")
-            if is_stop(text) and self.on_stop is not None and self.on_stop():
+            heard = self.detector.hears(recognizer, data)
+            if heard == "stop" and self.on_stop is not None and self.on_stop():
                 recognizer.Reset()  # stopped: don't also treat "Vico stop" as a call
                 self.stopped_at = time.monotonic()
                 continue
-            if is_wake(text) and not is_stop(text):
+            if heard == "wake":
+                self.detector.reset_state()
                 self._wake()
 
     def _wake(self) -> None:

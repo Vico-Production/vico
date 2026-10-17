@@ -20,7 +20,7 @@ from app.agent import control
 from app.agent.language import safe_restoration
 from app.agent.prompts import SUMMARY_SYSTEM, UNDERSTAND_SYSTEM, translate_system
 from app.contracts import LANGUAGE_NAMES, ErrorCode, ProviderStatus, VicoError
-from app.providers import tts
+from app.providers import kokoro, piper_voice, tts
 from app.providers.base import QuotaTracker, normalize_language, parse_json_text, provider_status
 from app.providers.gemini import GeminiProvider
 from app.providers.groq import GroqProvider, MistralProvider, OpenRouterProvider
@@ -257,9 +257,12 @@ class ProviderHub:
             except VicoError:
                 pass
         if language in ("en", "pcm"):
-            audio_bytes = await asyncio.to_thread(tts.system_voice, part)
-            if audio_bytes:
-                return done(audio_bytes, "system", "system voice")
+            # Offline: Kokoro (natural, downloaded once), Piper if the user installed it, then the
+            # computer's own voice (Windows) or espeak-ng (Linux).
+            for name, offline in (("kokoro", kokoro.speak), ("piper", piper_voice.speak), ("system", tts.system_voice)):
+                audio_bytes = await asyncio.to_thread(offline, part)
+                if audio_bytes:
+                    return done(audio_bytes, name, name if name != "system" else "system voice")
         if language == "yo" and not (voice or server):
             raise VicoError(ErrorCode.UNSUPPORTED, "Yorùbá voice replies need your speech server.")
         raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, " ".join(notes) or "No voice is available for this reply "

@@ -492,6 +492,15 @@ fn register_shortcut(app: &AppHandle) -> String {
 }
 
 /// Start with the computer by default, once. After that the tray toggle decides.
+fn autostart_was_turned_off(app: &AppHandle) -> bool {
+    let chosen = app
+        .path()
+        .app_config_dir()
+        .map(|d| d.join("autostart-chosen").exists())
+        .unwrap_or(false);
+    chosen && !app.autolaunch().is_enabled().unwrap_or(true)
+}
+
 fn autostart_enabled(app: &AppHandle) -> bool {
     let manager = app.autolaunch();
     if cfg!(debug_assertions) {
@@ -593,8 +602,12 @@ pub fn run() {
         .expect("http client");
     let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            summon(app, "vico://summon");
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if args.iter().any(|a| a == "--stop") {
+                let _ = app.emit("vico://stop", ());
+            } else if !args.iter().any(|a| a == AUTOSTART_ARG) {
+                summon(app, "vico://summon");
+            }
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -636,6 +649,14 @@ pub fn run() {
             never_activate_aura(&handle);
             if let Ok(mut slot) = state.shortcut.lock() {
                 slot.clone_from(&shortcut);
+            }
+            // Linux starts Vico at sign-in from the package's /etc/xdg/autostart entry; if the user
+            // switched "Start when I sign in" off, that start ends here at once.
+            if std::env::args().any(|a| a == "--system-autostart")
+                && autostart_was_turned_off(&handle)
+            {
+                handle.exit(0);
+                return Ok(());
             }
             build_tray(&handle, &shortcut)?;
             watch_cursor(handle.clone());

@@ -1535,6 +1535,27 @@ details.server[open] {
 .prompt.answer {
   position: relative;
 }
+/* The frame fills the panel so the setup form inside it scrolls (it must have a height). */
+.setup-frame {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.setup-frame > .setup {
+  flex: 1;
+  min-height: 0;
+}
+/* Continue / Begin / Save are always on screen, whatever the screen size. */
+.setup .choices {
+  position: sticky;
+  bottom: -24px;
+  margin: auto -28px -24px;
+  padding: 14px 28px 20px;
+  background: linear-gradient(to bottom, rgba(14, 21, 19, 0), #0e1513 30%);
+  z-index: 2;
+}
 .setup-frame[hidden] {
   display: none;
 }

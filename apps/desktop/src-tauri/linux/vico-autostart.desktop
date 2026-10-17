@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Vico
+Comment=Vico starts in the background so you can call it by name or with Super+Alt+V
+Exec=vico --autostart --system-autostart
+Icon=vico
+Terminal=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

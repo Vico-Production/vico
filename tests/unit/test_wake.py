@@ -161,3 +161,41 @@ def test_model_download_refuses_unsafe_paths(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="unsafe"):
         download_model(tmp_path / "models" / "m", fetch=lambda url: archive)
     assert not (tmp_path / "models" / "evil.txt").exists() and not (tmp_path / "evil.txt").exists()
+
+
+class _Rec:
+    """A recognizer that returns scripted results, one per block."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.now = None
+
+    def AcceptWaveform(self, data):  # noqa: N802 - Vosk's name
+        self.now = self.script.pop(0)
+        return self.now[0] == "final"
+
+    def Result(self):  # noqa: N802
+        return json.dumps(self.now[1])
+
+    def PartialResult(self):  # noqa: N802
+        return json.dumps({"partial": self.now[1]})
+
+
+def test_a_near_miss_seen_once_does_not_wake_but_a_real_call_does():
+    from app.audio.wake import WakeDetector
+
+    d = WakeDetector()
+    rec = _Rec([("partial", "vico"), ("partial", "big")])  # a flicker, then gone
+    assert [d.hears(rec, b"\0\0" * 1600) for _ in range(2)] == ["", ""]
+    rec = _Rec([("partial", "vico"), ("partial", "vico")])
+    assert [d.hears(rec, b"\0\0" * 1600) for _ in range(2)] == ["", "wake"]
+
+
+def test_an_unsure_final_vico_does_not_wake():
+    from app.audio.wake import WakeDetector
+
+    d = WakeDetector()
+    unsure = {"text": "vico", "result": [{"word": "vico", "conf": 0.3}]}
+    sure = {"text": "vico", "result": [{"word": "vico", "conf": 0.9}]}
+    assert d.hears(_Rec([("final", unsure)]), b"\0\0" * 1600) == ""
+    assert d.hears(_Rec([("final", sure)]), b"\0\0" * 1600) == "wake"
