@@ -165,8 +165,13 @@ fn show_without_focus(window: &WebviewWindow) {
 #[tauri::command]
 fn aura_show(app: AppHandle) {
     if let Some(aura) = app.get_webview_window("aura") {
+        // Linux (tao/GTK) crashes if a window is made click-through before it is on screen,
+        // so there it is shown first; Windows takes it either way and never flashes.
+        #[cfg(not(target_os = "linux"))]
         let _ = aura.set_ignore_cursor_events(true);
         show_without_focus(&aura);
+        #[cfg(target_os = "linux")]
+        let _ = aura.set_ignore_cursor_events(true);
     }
 }
 
@@ -360,7 +365,9 @@ fn never_activate_aura(app: &AppHandle) {
 #[tauri::command]
 fn aura_interactive(app: AppHandle, on: bool) {
     if let Some(aura) = app.get_webview_window("aura") {
-        let _ = aura.set_ignore_cursor_events(!on);
+        if aura.is_visible().unwrap_or(false) {
+            let _ = aura.set_ignore_cursor_events(!on); // (never on a hidden window: crashes on Linux)
+        }
     }
 }
 
