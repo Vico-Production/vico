@@ -415,7 +415,7 @@ class EmailArgs(StrictModel):
 
 
 def _outlook() -> str | None:
-    if not WIN:
+    if sys.platform != "win32":  # (spelled out so type checkers on Linux skip the Windows registry)
         return None
     try:
         import winreg
