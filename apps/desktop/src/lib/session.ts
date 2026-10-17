@@ -26,6 +26,7 @@ export type Phase =
   | "error"
   | "staying" // the user asked Vico to stay: it dozes until called
   | "welcome" // the last setup card: how to get back to settings
+  | "answer" // a long answer or explanation, open to read until closed
   | "leaving";
 
 export type Spots = Partial<Record<"peek" | "yoyo" | "possession_label" | "swarm" | "runner" | "lens", number>>;
@@ -48,7 +49,9 @@ export interface Session {
   reaction: Reaction | null; // a short reaction to something that just happened
   reactionAt: number; // restarts the reaction's animation when it repeats
   act: Act | null; // the step being acted out, at its real place on screen
-  followUp: boolean; // listening for a next request without taking the keyboard
+  followUp: boolean; // (kept for the aura) Vico never listens by itself after a task
+  minimized: boolean; // the setup/settings panel is folded into a small pill
+  recording: boolean; // the microphone is on (Space held, or called by name)
   staying: boolean; // the user asked Vico to stay until told to go
   micHint: string | null; // what to do when the microphone gives no sound
   spots: Spots; // where the user dragged or told each look to go
@@ -68,7 +71,12 @@ export type Intent =
   | { type: "reject" }
   | { type: "configured"; look: Look; first?: boolean }
   | { type: "reset" }
-  | { type: "spot"; spots: Spots };
+  | { type: "spot"; spots: Spots }
+  | { type: "hold-talk" } // Space held down in Vico's box: start listening
+  | { type: "release-talk" } // ...let go: done talking
+  | { type: "talk-released" } // the global shortcut was let go
+  | { type: "stop" } // stop everything (Win + Alt + X, the tray, the Stop button)
+  | { type: "minimize"; on: boolean };
 
 export const STATE_EVENT = "vico://state";
 export const INTENT_EVENT = "vico://intent";
@@ -78,6 +86,7 @@ export const PROMPT_PHASES: Phase[] = [
   "setup",
   "settings",
   "welcome",
+  "answer",
   "listening",
   "transcribing",
   "review",
@@ -105,6 +114,8 @@ export const INITIAL: Session = {
   reactionAt: 0,
   act: null,
   followUp: false,
+  minimized: false,
+  recording: false,
   staying: false,
   micHint: null,
   spots: {},
@@ -131,6 +142,8 @@ export function moodFor(phase: Phase): Mood {
       return "done";
     case "welcome":
       return "listen";
+    case "answer":
+      return "done";
     case "error":
       return "sad";
     default:
@@ -139,13 +152,11 @@ export function moodFor(phase: Phase): Mood {
 }
 
 const REVIEW_MS = 900; // a heard request goes on its own unless the user starts editing
-// Natural speech has pauses: wait this long after the last word before treating it as the end,
-// and longer while the request is still short (people pause after "Vico, can you...").
-const SILENCE_MS = 1500;
-const SILENCE_SHORT_MS = 2100;
-const SHORT_SPEECH_MS = 1600;
-const NO_SPEECH_MS = 8000; // nothing said at all: stop and say so, instead of waiting 15 s
-const FOLLOW_UP_MS = 10_000; // after a task, listen this long for a next request, then leave
+const NO_SPEECH_MS = 12_000; // nothing said at all: stop and say so
+const FOLLOW_UP_MS = 12_000; // after a task, stay this long (without listening) for a next request
+const LONG_ANSWER = 240; // longer answers open in a panel to read, instead of a passing bubble
+const HOLD_MS = 450; // holding the key longer than this means push-to-talk: letting go sends
+const TALK_HINT = "Anything else? Press Win + Alt + V and hold Space to talk, or say \"Vico\".";
 const SPEECH_LEVEL = 0.03; // the lowest level that counts as speech, even in a silent room
 const NOISE_MARGIN = 2.5; // speech must be this many times louder than the room
 const ROOM_MAX = 0.06; // louder than this is never just the room
@@ -199,9 +210,6 @@ export class VicoDriver {
   private reactionTimer: number | null = null;
   private wakePoller: number | null = null;
   private heard = false;
-  private quietSince = 0;
-  private speechSince = 0;
-  private misses = 0; // listens in a row that heard nothing
   private lastPhase: Phase = "hidden";
   private busy = false;
   private voice = false;
@@ -214,6 +222,8 @@ export class VicoDriver {
   private ready: { onboarded: boolean; speech: boolean; offline: boolean } | null = null; // from the last summon
   private rotation: { looks: Look[]; on: boolean } = { looks: [], on: false };
   private toldNoYoruba = false;
+  private pressedAt = 0; // when the talk key went down (0: not held)
+  private answering = false; // the words being heard answer Vico's question
 
   constructor(private readonly windows: Native = native) {}
 
@@ -270,7 +280,10 @@ export class VicoDriver {
   private async placePrompt() {
     if (!this.promptWanted()) return;
     const screen = { width: window.innerWidth, height: window.innerHeight };
-    const frame = promptFrame(this.look, this.state.phase, moodFor(this.state.phase), screen, this.state.target, this.spots);
+    const folded = this.state.minimized && ["setup", "settings"].includes(this.state.phase);
+    const frame = folded
+      ? { x: screen.width - 296, y: screen.height - 76, width: 280, height: 56 } // a small pill, bottom right
+      : promptFrame(this.look, this.state.phase, moodFor(this.state.phase), screen, this.state.target, this.spots);
     await this.windows.placePrompt?.(frame);
   }
 
@@ -388,6 +401,17 @@ export class VicoDriver {
         this.clearTimer();
         this.spots = {};
         return this.set({ ...INITIAL, phase: "setup" });
+      case "hold-talk":
+        return void this.holdTalk();
+      case "release-talk":
+      case "talk-released":
+        return void this.releaseTalk();
+      case "stop":
+        return void this.stopEverything();
+      case "minimize":
+        this.set({ minimized: intent.on });
+        void this.placePrompt();
+        return;
       case "spot":
         this.spots = intent.spots;
         this.set({});
@@ -407,7 +431,7 @@ export class VicoDriver {
         }
         this.set({ phase: "done", narration: "", localized: null, message: "Saved." });
         this.react("gotit");
-        this.timer = window.setTimeout(() => this.leave(), 2000);
+        this.timer = window.setTimeout(() => this.rest(), 2000);
         return;
     }
   }
@@ -416,19 +440,17 @@ export class VicoDriver {
   async summon(woke = false) {
     const active = this.run && !TERMINAL_STATES.includes(this.run.state);
     const busyPhases = ["typing", "review", "setup", "settings", "transcribing"];
-    if (active || busyPhases.includes(this.state.phase) || (this.state.phase === "listening" && !this.state.followUp)) {
-      // Already here: summoning again while listening means "I'm done talking".
+    if (active || busyPhases.includes(this.state.phase) || this.state.phase === "listening") {
+      // Already here: tapping again while listening means "I'm done talking".
       if (woke) void api.cancelRecording().catch(() => undefined);
-      if (this.state.phase === "listening") await this.stopListening();
+      if (this.state.phase === "listening" && this.state.recording) await this.stopListening();
       else this.set({});
       return;
     }
     const arriving = ["hidden", "leaving", "welcome"].includes(this.state.phase);
     this.clearTimer();
     this.stopPolling();
-    if (this.state.phase === "listening") void api.cancelRecording().catch(() => undefined); // a follow-up
     this.run = null;
-    this.misses = 0;
     // Warm the AI connection now, in parallel with everything below.
     void api.warm().catch(() => undefined);
     if (arriving) {
@@ -471,7 +493,56 @@ export class VicoDriver {
     this.set({ ...INITIAL, phase: speech ? "listening" : "typing", speech, offline, staying: this.state.staying,
       target: this.state.target, narration: offline ? "Offline · simple typed commands only" : "" });
     if (arriving) this.react("arrive");
-    if (speech) await this.listen(woke);
+    // Called by name: the engine is already recording what follows. Otherwise Vico waits for
+    // Space to be held (or for typing).
+    if (speech && woke) await this.listen(true, true);
+  }
+
+  /** Space held down in Vico's box: listen (to answer a question, or a new request). */
+  private async holdTalk() {
+    const ready = this.state.phase === "listening" && !this.state.recording;
+    if (!this.state.speech || this.busy || !(ready || ["typing", "question", "done", "error", "staying", "answer"].includes(this.state.phase))) {
+      return;
+    }
+    this.clearTimer();
+    this.pressedAt = Date.now();
+    this.answering = this.state.phase === "question";
+    await this.listen(false, false);
+  }
+
+  /** The talk key was let go: after a hold, that means "I'm done talking". A quick tap keeps
+   *  listening until Enter, Done, or another tap. */
+  private async releaseTalk() {
+    const held = this.pressedAt > 0 && Date.now() - this.pressedAt >= HOLD_MS;
+    this.pressedAt = 0;
+    if (this.state.phase !== "listening" || !this.state.recording) return;
+    if (held) await this.stopListening();
+    else {
+      // A tap, not a hold: nothing was said. Drop it and wait for Space to be held.
+      if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
+      this.levelPoller = null;
+      void api.cancelRecording().catch(() => undefined);
+      this.set({ recording: false, level: 0, narration: "Hold Space down while you talk, then let go." });
+    }
+  }
+
+  /** Stop: every task stops now, a recording is dropped, and Vico says so. */
+  private async stopEverything() {
+    this.clearTimer();
+    if (this.state.phase === "listening") void api.cancelRecording().catch(() => undefined);
+    let stopped: string[] = [];
+    try {
+      stopped = (await api.stopAll()).stopped;
+    } catch {
+      /* the engine is restarting: nothing is running */
+    }
+    if (this.state.phase === "hidden") return;
+    this.stopPolling();
+    this.run = null;
+    this.set({ phase: "done", message: stopped.length ? "Stopped. Nothing else will be done." : "Nothing is running.",
+      localized: null, narration: "", step: null, act: null, question: null, recording: false });
+    this.react("refuse");
+    this.timer = window.setTimeout(() => this.rest(), 2600);
   }
 
   /** With rotation on, each new summon after Vico has rested uses the next look in turn. */
@@ -484,23 +555,22 @@ export class VicoDriver {
     void api.updateSettings({ look: next }).catch(() => undefined);
   }
 
-  async listen(alreadyRecording = false, followUp = false) {
+  /** Listen until the user is done: they let go of the talk key, press Enter, click Done or tap
+   *  the key again. Called by name ("Vico ..."), with no key to let go, a long pause ends it. */
+  async listen(alreadyRecording = false, byName = false) {
+    const followUp = false;
     this.heard = false;
-    this.quietSince = Date.now();
-    this.speechSince = 0;
     const started = Date.now();
     let floor = 0; // the room's background level, learned while the user is quiet
     if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
     this.levelPoller = null;
-    this.set({ phase: "listening", text: "", level: 0, followUp, micHint: null, act: null,
+    this.set({ phase: "listening", text: "", level: 0, followUp, micHint: null, act: null, recording: true,
       narration: followUp ? "Anything else? I'm listening" : "" });
     try {
-      // The engine hears the pause and starts transcribing by itself, with no round trip.
-      if (alreadyRecording) await api.autoStop();
-      else await api.startRecording(undefined, true);
+      if (alreadyRecording) await api.autoStop(true); // a long pause after "Vico ..." ends it
+      else await api.startRecording(undefined, byName);
     } catch (err) {
-      if (followUp) return this.leave();
-      this.set({ phase: "typing", followUp: false, narration: errorMessage(err) });
+      this.set({ phase: this.answering ? "question" : "typing", followUp: false, narration: errorMessage(err) });
       return;
     }
     const limit = followUp ? FOLLOW_UP_MS : NO_SPEECH_MS;
@@ -524,22 +594,15 @@ export class VicoDriver {
             return;
           }
         } else {
-          // Engines without endpointing: decide here.
+          // The user ends it; here Vico only notices whether anyone has spoken at all.
           if (!this.heard && status.level < ROOM_MAX) {
             floor = floor === 0 ? status.level : Math.min(floor * 1.02 + 0.001, status.level);
           }
-          if (status.level > Math.max(SPEECH_LEVEL, floor * NOISE_MARGIN)) {
-            if (!this.heard) this.speechSince = now;
-            this.heard = true;
-            this.quietSince = now;
-          }
-          const spoken = this.quietSince - this.speechSince;
-          const pause = spoken < SHORT_SPEECH_MS ? SILENCE_SHORT_MS : SILENCE_MS;
-          if (this.heard && now - this.quietSince > pause) return void this.stopListening();
+          if (status.level > Math.max(SPEECH_LEVEL, floor * NOISE_MARGIN)) this.heard = true;
         }
         if (status.full || now - started > status.max_s * 1000) {
           void this.stopListening();
-        } else if (!this.heard && now - started > limit) {
+        } else if (!this.heard && this.pressedAt === 0 && now - started > limit) {
           void this.nothingHeard(followUp);
         }
       } catch {
@@ -548,40 +611,29 @@ export class VicoDriver {
     }, 110);
   }
 
-  /** Nobody spoke: never send silence anywhere. */
-  private async nothingHeard(followUp: boolean) {
+  /** Nobody spoke: never send silence anywhere; wait for Space (or typing) instead. */
+  private async nothingHeard(_followUp: boolean) {
     if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
     this.levelPoller = null;
     await api.cancelRecording().catch(() => undefined);
-    if (followUp) {
-      if (this.state.staying) return this.set({ phase: "staying", followUp: false, level: 0, narration: "" });
-      this.react("bye");
-      this.timer = window.setTimeout(() => this.leave(), 900);
-      return;
-    }
-    this.misses += 1;
     this.react("huh");
-    if (this.misses >= 2) {
-      this.set({ phase: "typing", level: 0, narration: this.state.micHint ??
-        "I didn't hear anything. Type it, or call me again." });
-      return;
-    }
-    this.set({ narration: "I didn't hear anything. Say it again?" });
-    await this.listen();
+    this.set({ phase: this.answering ? "question" : "listening", recording: false, level: 0,
+      narration: this.state.micHint ?? "I didn't hear anything. Hold Space and talk, or type it." });
   }
 
   /** What the engine heard (it stopped and transcribed by itself). */
   private heardResult(text: string | null, error: string | null) {
     if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
     this.levelPoller = null;
+    this.set({ recording: false });
     if (error !== null) {
       this.react("huh");
-      return this.set({ phase: "typing", followUp: false, level: 0, narration: error });
+      return this.set({ phase: this.answering ? "question" : "typing", followUp: false, level: 0, narration: error });
     }
     const said = (text ?? "").trim();
     if (!said) {
       this.react("huh");
-      return this.set({ phase: "typing", followUp: false, level: 0,
+      return this.set({ phase: this.answering ? "question" : "typing", followUp: false, level: 0,
         narration: "I didn't catch that. Say it again, or type it." });
     }
     this.react("gotit");
@@ -595,13 +647,14 @@ export class VicoDriver {
     this.busy = true;
     if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
     this.levelPoller = null;
-    this.set({ phase: "transcribing", level: 0, followUp: false });
+    this.set({ phase: "transcribing", level: 0, followUp: false, recording: false });
     try {
       const result = await api.stopRecording(true);
       const text = result.transcript?.text.trim() ?? "";
       if (!text) {
         this.react("huh");
-        this.set({ phase: "typing", narration: "I didn't catch that. Say it again, or type it." });
+        this.set({ phase: this.answering ? "question" : "typing",
+          narration: "I didn't catch that. Say it again, or type it." });
         return;
       }
       this.react("gotit");
@@ -616,14 +669,14 @@ export class VicoDriver {
   }
 
   async type(text: string) {
-    if (this.state.phase === "listening") {
+    if (this.state.phase === "listening" && this.state.recording) {
       if (this.levelPoller !== null) window.clearInterval(this.levelPoller);
       this.levelPoller = null;
       void api.cancelRecording().catch(() => undefined);
     }
     this.clearTimer();
-    const phase = this.state.phase === "question" ? "question" : "typing";
-    this.set({ phase, text, reviewUntil: null, level: 0, followUp: false });
+    const phase = this.state.phase === "question" || this.answering ? "question" : "typing";
+    this.set({ phase, text, reviewUntil: null, level: 0, followUp: false, recording: false });
   }
 
   async submit() {
@@ -635,7 +688,8 @@ export class VicoDriver {
     }
     this.busy = true;
     try {
-      if (this.state.phase === "question" && this.run) {
+      if ((this.state.phase === "question" || this.answering) && this.run) {
+        this.answering = false;
         this.set({ phase: "thinking", narration: "Got it", question: null, reviewUntil: null });
         this.run = await api.reply(this.run.id, text);
       } else {
@@ -696,7 +750,11 @@ export class VicoDriver {
         }
         return;
       case "awaiting_clarification":
-        if (this.state.phase !== "question") this.set({ phase: "question", question: run.question, text: "", act: null });
+        if (this.state.phase !== "question" && !this.answering) {
+          this.set({ phase: "question", question: run.question, text: "", act: null, narration: "" });
+          this.react("huh");
+          void this.speakResult(run.question, run.language, true);
+        }
         return;
       case "cooling_down":
         this.set({ phase: "cooling", cooldownUntil: run.cooldown_until ? Date.parse(run.cooldown_until) : null,
@@ -705,10 +763,17 @@ export class VicoDriver {
       case "completed":
         this.stopPolling();
         if (run.control) return this.obey(run);
-        this.set({ phase: "done", message: run.message, localized: run.message_localized, narration: "", step: null,
-          act: null });
-        this.react("celebrate");
-        this.afterResult();
+        if ((run.message_localized || run.message || "").length > LONG_ANSWER) {
+          // An explanation: open to read (and scroll) until the user closes it.
+          this.set({ phase: "answer", message: run.message, localized: run.message_localized, narration: "",
+            step: null, act: null });
+          this.react("gotit");
+        } else {
+          this.set({ phase: "done", message: run.message, localized: run.message_localized, narration: "", step: null,
+            act: null });
+          this.react("celebrate");
+          this.afterResult();
+        }
         void this.speakResult(run.message_localized || run.message, run.language);
         return;
       case "failed":
@@ -716,7 +781,7 @@ export class VicoDriver {
       case "cancelled":
         this.stopPolling();
         this.set({ phase: "done", message: run.message || "Stopped. Nothing else was done.", localized: null, act: null });
-        this.timer = window.setTimeout(() => this.leave(), 2600);
+        this.timer = window.setTimeout(() => this.rest(), 2600);
         return;
       default: {
         const phase = run.state === "executing" || run.state === "verifying" ? "working" : "thinking";
@@ -766,10 +831,15 @@ export class VicoDriver {
       this.afterResult();
       return;
     }
-    // A greeting: answer in the user's language, then keep listening for what they want.
+    // A greeting: answer in the user's language and stay a while; the user holds the key to talk.
     this.set({ phase: "done", message, localized: null, act: null });
     this.react("greet");
-    this.timer = window.setTimeout(() => void this.listen(false, true), 1700);
+    void this.speakResult(message, run.language);
+    this.timer = window.setTimeout(() => {
+      if (this.state.phase !== "done") return;
+      this.set({ message: `${message ?? ""}\n${TALK_HINT}` });
+      this.timer = window.setTimeout(() => this.rest(), FOLLOW_UP_MS);
+    }, 1700);
   }
 
   /** After a result: stay a little and listen for a next request (without taking the keyboard). */
@@ -778,17 +848,18 @@ export class VicoDriver {
     this.timer = window.setTimeout(() => {
       if (this.state.phase !== "done") return;
       if (this.state.staying) return this.set({ phase: "staying", message: null, narration: "" });
-      if (this.state.speech) void this.listen(false, true);
-      else this.timer = window.setTimeout(() => this.leave(), FOLLOW_UP_MS);
+      // Never listen by itself (a quiet room is not a request): offer, and leave after a while.
+      this.set({ message: TALK_HINT, localized: null });
+      this.timer = window.setTimeout(() => this.rest(), FOLLOW_UP_MS);
     }, RESULT_MS);
   }
 
   /** Speak the answer in the user's language (YarnGPT on their speech server), from memory. */
-  private async speakResult(text: string | null, language: string) {
+  private async speakResult(text: string | null, language: string, question = false) {
     if (!this.voice || !text || !["en", "yo", "ha", "ig", "pcm"].includes(language)) return;
     try {
       const out = await api.speak(text, language as Language);
-      if (!["done", "listening"].includes(this.state.phase)) return;
+      if (!["done", "listening", ...(question ? ["question"] : [])].includes(this.state.phase)) return;
       const bytes = Uint8Array.from(atob(out.audio_b64), (c) => c.charCodeAt(0));
       const url = URL.createObjectURL(new Blob([bytes], { type: out.mime }));
       const audio = new Audio(url);
@@ -814,8 +885,7 @@ export class VicoDriver {
     this.set({ phase: "error", message, narration: "", step: null, act: null });
     this.react(refused ? "refuse" : "shrug");
     this.clearTimer();
-    this.timer = window.setTimeout(() => (this.state.staying ? this.set({ phase: "staying", message: null })
-      : this.leave()), ERROR_MS);
+    this.timer = window.setTimeout(() => this.rest(), ERROR_MS);
   }
 
   async decide(approved: boolean, confirm: boolean) {
@@ -850,6 +920,16 @@ export class VicoDriver {
     this.listeners.clear();
   }
 
+  /** Done for now: leave, unless the user asked Vico to stay (then it dozes on screen). */
+  private rest() {
+    if (this.state.staying) {
+      this.clearTimer();
+      this.set({ phase: "staying", message: null, narration: "", step: null, act: null, recording: false });
+      return;
+    }
+    this.leave();
+  }
+
   leave() {
     this.clearTimer();
     this.audio?.pause();
@@ -857,7 +937,9 @@ export class VicoDriver {
     this.stopPolling();
     if (this.state.phase === "hidden" || this.state.phase === "leaving") return;
     if (this.state.phase === "listening") void api.cancelRecording().catch(() => undefined);
-    this.set({ phase: "leaving", level: 0, act: null, followUp: false });
+    this.answering = false;
+    this.pressedAt = 0;
+    this.set({ phase: "leaving", level: 0, act: null, followUp: false, minimized: false, recording: false });
     this.timer = window.setTimeout(() => {
       this.run = null;
       this.set({ ...INITIAL });

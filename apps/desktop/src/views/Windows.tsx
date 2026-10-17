@@ -21,6 +21,7 @@ export function AuraWindow() {
       listen<Intent>(INTENT_EVENT, (intent) => driver.dispatch(intent)),
       listen<null>("vico://summon", () => driver.dispatch({ type: "summon" })),
       listen<null>("vico://settings", () => driver.dispatch({ type: "settings" })),
+      listen<null>("vico://stop", () => driver.dispatch({ type: "stop" })),
     ];
     void driver.boot();
     return () => {
@@ -63,10 +64,16 @@ export function Stage() {
         e.preventDefault();
         driver.dispatch({ type: "summon" });
       }
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "x") {
+        e.preventDefault();
+        driver.dispatch({ type: "stop" });
+      }
     };
     window.addEventListener("keydown", onKey);
+    const stopStop = listen<null>("vico://stop", () => driver.dispatch({ type: "stop" }));
     return () => {
       window.removeEventListener("keydown", onKey);
+      stopStop();
       driver.dispose();
     };
   }, [driver]);

@@ -333,6 +333,30 @@ fn aura_metrics(app: AppHandle) -> Option<Value> {
 
 /// The aura lets every click through, except while the cursor is over Vico's handle
 /// (Peek's hands, the yo-yo's anchor) so it can be dragged.
+/// Clicking Vico's look (to drag it) must never make the overlay the active window: the app
+/// you were using keeps the keyboard, and nothing reacts to the overlay "taking focus".
+fn never_activate_aura(app: &AppHandle) {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+        };
+        if let Some(aura) = app.get_webview_window("aura") {
+            if let Ok(hwnd) = aura.hwnd() {
+                let hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
+                unsafe {
+                    let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE as isize);
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+}
+
 #[tauri::command]
 fn aura_interactive(app: AppHandle, on: bool) {
     if let Some(aura) = app.get_webview_window("aura") {
@@ -437,6 +461,17 @@ fn shortcut_label(preferred: bool) -> &'static str {
 
 /// Win + Alt + V (Cmd + Option + V on macOS), or Ctrl + Alt + V if another app owns it.
 /// Returns the label of the one registered, or "" when neither could be.
+/// Win + Alt + X (or Ctrl + Alt + X) stops whatever Vico is doing.
+fn register_stop_shortcut(app: &AppHandle) {
+    let preferred = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyX);
+    if app.global_shortcut().register(preferred).is_err() {
+        let _ = app.global_shortcut().register(Shortcut::new(
+            Some(Modifiers::CONTROL | Modifiers::ALT),
+            Code::KeyX,
+        ));
+    }
+}
+
 fn register_shortcut(app: &AppHandle) -> String {
     let preferred = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyV);
     if app.global_shortcut().register(preferred).is_ok() {
@@ -481,11 +516,18 @@ fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
         autostart_enabled(app),
         None::<&str>,
     )?;
+    let stop_item = MenuItem::with_id(app, "stop", "Stop what Vico is doing", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Vico", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&summon_item, &autostart_item, &separator, &quit_item],
+        &[
+            &summon_item,
+            &stop_item,
+            &autostart_item,
+            &separator,
+            &quit_item,
+        ],
     )?;
     let tooltip = if shortcut.is_empty() {
         "Vico".to_string()
@@ -498,6 +540,9 @@ fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "summon" => summon(app, "vico://summon"),
+            "stop" => {
+                let _ = app.emit("vico://stop", ());
+            }
             "autostart" => {
                 // The check mark flips by itself; make the sign-in entry match it.
                 let manager = app.autolaunch();
@@ -544,9 +589,15 @@ pub fn run() {
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        summon(app, "vico://summon");
+                .with_handler(|app, shortcut, event| {
+                    let stop = shortcut.key == Code::KeyX;
+                    match (stop, event.state()) {
+                        // Stop everything Vico is doing, from anywhere.
+                        (true, ShortcutState::Pressed) => {
+                            let _ = app.emit("vico://stop", ());
+                        }
+                        (false, ShortcutState::Pressed) => summon(app, "vico://summon"),
+                        _ => {}
                     }
                 })
                 .build(),
@@ -568,6 +619,8 @@ pub fn run() {
             let handle = app.handle().clone();
             place_windows(&handle);
             let shortcut = register_shortcut(&handle);
+            register_stop_shortcut(&handle);
+            never_activate_aura(&handle);
             if let Ok(mut slot) = state.shortcut.lock() {
                 slot.clone_from(&shortcut);
             }

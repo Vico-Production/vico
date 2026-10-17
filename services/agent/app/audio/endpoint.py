@@ -15,8 +15,12 @@ SILENCE_SHORT_S = 2.1  # ...while less than SHORT_SPEECH_S has been said
 SHORT_SPEECH_S = 1.6
 
 
+PATIENT_S = 3.5  # called by name: wait this long after the last word
+
+
 class Endpointer:
-    def __init__(self) -> None:
+    def __init__(self, patient: bool = False) -> None:
+        self.patient = patient
         self.floor = 0.0  # the room's background level, learned while the user is quiet
         self.heard = False
         self.speech_since = 0.0
@@ -34,5 +38,5 @@ class Endpointer:
         if not self.heard:
             return False
         spoken = self.quiet_since - self.speech_since  # how long the user has talked so far
-        pause = SILENCE_SHORT_S if spoken < SHORT_SPEECH_S else SILENCE_S
+        pause = PATIENT_S if self.patient else (SILENCE_SHORT_S if spoken < SHORT_SPEECH_S else SILENCE_S)
         return now - self.quiet_since > pause

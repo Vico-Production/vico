@@ -14,6 +14,7 @@ from app.contracts import ErrorCode, VicoError
 from app.platform.base import AppEntry, PlatformAdapter, ScreenRect, WindowInfo, detached_kwargs
 
 APPS_FOLDER = "shell:AppsFolder\\"
+CONSOLE_APPS = {"powershell.exe", "cmd.exe", "pwsh.exe"}
 _PYWINAUTO_SPECIAL = set("+^%~(){}[]")
 _KEY_NAMES = {
     "enter": "{ENTER}", "return": "{ENTER}", "tab": "{TAB}", "esc": "{ESC}", "escape": "{ESC}",
@@ -119,7 +120,12 @@ class WindowsAdapter(PlatformAdapter):
     def launch_app(self, entry: AppEntry) -> int | None:
         builtin = self.builtin_apps().get(entry.name.lower())
         if builtin:
-            proc = subprocess.Popen(builtin, **detached_kwargs())  # noqa: S603 - fixed argv
+            if Path(builtin[0]).name.lower() in CONSOLE_APPS:
+                # The user asked to open PowerShell or Command Prompt: give it its own window.
+                proc = subprocess.Popen(builtin, creationflags=subprocess.CREATE_NEW_CONSOLE,  # type: ignore[attr-defined]  # noqa: S603
+                                        close_fds=True)
+            else:
+                proc = subprocess.Popen(builtin, **detached_kwargs())  # noqa: S603 - fixed argv
             return proc.pid
         if entry.target.startswith(APPS_FOLDER):
             # Store and desktop apps alike start through the shell by their app ID.

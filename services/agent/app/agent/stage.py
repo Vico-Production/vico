@@ -46,6 +46,11 @@ async def locate(ctx: ToolContext, tool: str, args: Any) -> dict[str, Any] | Non
         return _stage(await asyncio.to_thread(platform.window_rect, args.title), "window")
     if tool in ("type_text", "press_keys"):
         return _stage(await asyncio.to_thread(platform.focus_rect), "field")
+    if tool == "click_at":  # the exact pixel: a small box around it
+        return _stage((args.x - 12, args.y - 12, 24, 24), "element")
+    if tool in ("screenshot", "look_at_screen", "click_on_screen", "scroll"):
+        # click_on_screen learns its spot while it looks; until then the window it works in
+        return _stage(await asyncio.to_thread(platform.focus_rect), "window")
     browser = ctx.browser
     if browser is None or not tool.startswith("browser_"):
         return None

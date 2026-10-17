@@ -14,7 +14,7 @@ from typing import Any
 
 ACTIONS = ("stay", "go", "move", "greet", "settings", "voice")
 PLACES = ("left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right", "away")
-MAX_WORDS = 8  # longer requests are tasks ("wait for the page to load, then ...")
+MAX_WORDS = 12  # longer requests are tasks ("wait for the page to load, then ...")
 
 _LEAD = re.compile(r"^\W*(?:(?:hey|hi|okay|ok|oya|abeg|please|so|yo)\W+)*vico\b\W*", re.I)
 _TRAIL = re.compile(r"(?:\W+(?:vico|please|abeg|o|oh|now|yet|for now|for me|small|biko|don allah|jor|abi))*\W*$", re.I)
@@ -26,9 +26,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"thank you,? that'?s all|i'?m done|we'?re done|comot|you fit go|you fit comot|o d[aà]b[oọ]|odabo|"
         r"sai anjima|ka [oọ] d[iị])", re.I)),
     ("stay", re.compile(
-        r"(?:stay|stay here|stay with me|stay around|don'?t go|do not go|don'?t leave|do not leave|wait|wait for me|"
+        r"(?:(?:abeg |please |just )?(?:stay|remain|keep yourself|be)(?: (?:here|there|around|up|open|with me|"
+        r"visible))?(?: (?:on|in) (?:the |my |this )?screen)?(?: (?:until|till) i (?:tell|ask|say)[\w ']*)?|"
+        r"don'?t go|do not go|don'?t leave|do not leave|don'?t (?:hide|disappear)|wait|wait for me|"
         r"hold on|i still need you|don'?t go,? i still need you|no go|no comot|make you no go|wait small|d[uú]r[oó]|"
-        r"jira|tsaya|n[oọ]r[oọ])", re.I)),
+        r"jira|tsaya|n[oọ]r[oọ]|(?:abeg )?stay for (?:me|there))", re.I)),
     ("move", re.compile(
         r"(?:(?:move|go|shift|walk)(?: yourself)?(?: over)?(?: to)?(?: the)? (?:top |bottom |upper |lower )?"
         r"(?:left|right|top|bottom|up|down|corner|side|aside|away)(?: (?:side|corner|edge))?|get out of my way|"
@@ -123,3 +125,21 @@ def reply(control: dict[str, Any], language: str) -> str:
         return "Okay, I'll talk to you." if control.get("value") == "on" else "Okay, text only from now on."
     where = control.get("where", "away")
     return "Okay, moving out of your way." if where == "away" else f"Okay, moving to the {where.replace('-', ' ')}."
+
+
+_LOOSE_STAY = re.compile(r"\b(?:stay|remain|don'?t (?:go|leave|disappear)|no comot|no go)\b", re.I)
+_LOOSE_GO = re.compile(r"\b(?:go away|you can go|leave now|disappear|hide yourself|goodbye|bye bye|comot)\b", re.I)
+_TASK_WORDS = re.compile(r"\b(?:open|create|make|delete|remove|send|play|search|find|copy|paste|close|type|write|"
+                         r"download|install|turn|set|take|show|read|click|go to|email|call)\b", re.I)
+
+
+def loose(text: str) -> dict[str, Any] | None:
+    """When the AI only answered in words, was the request still about Vico staying or going?
+    Used as a safety net so "stay on the screen until I say so" is obeyed, not just agreed to."""
+    if _TASK_WORDS.search(text) or len(text.split()) > 20:
+        return None
+    if _LOOSE_GO.search(text):
+        return {"action": "go"}
+    if _LOOSE_STAY.search(text):
+        return {"action": "stay"}
+    return None

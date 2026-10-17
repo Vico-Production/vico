@@ -51,7 +51,8 @@ async def run_command(ctx: ToolContext, a: RunCommandArgs) -> ToolResult:
     proc = subprocess.Popen(  # noqa: S603 - user-approved command, argv form
         argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
         text=True, encoding="utf-8", errors="replace",
-        **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32"  # type: ignore[attr-defined]
+        # No console window flashes up: the command runs out of sight and its output comes back here.
+        **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000} if sys.platform == "win32"  # type: ignore[attr-defined]
            else {"start_new_session": True}),
     )
     try:

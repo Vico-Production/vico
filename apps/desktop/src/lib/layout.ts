@@ -31,6 +31,7 @@ export function promptSize(phase: string, screen: { width: number; height: numbe
     return { width: Math.min(780, screen.width - 40), height: Math.min(tall, screen.height - 60) };
   }
   if (phase === "welcome") return { width: Math.min(680, screen.width - 40), height: 240 };
+  if (phase === "answer") return { width: Math.min(560, screen.width - 40), height: Math.min(460, screen.height - 120) };
   if (phase === "approval") return { width: 480, height: 210 };
   if (phase === "question") return { width: 460, height: 176 };
   if (phase === "typing") return { width: 460, height: 150 };

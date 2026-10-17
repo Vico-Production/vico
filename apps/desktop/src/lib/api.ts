@@ -112,7 +112,8 @@ export const api = {
   startRecording: (language?: Language, autoStop = true) =>
     call<AudioStatus>("POST", "/audio/start", { language: language ?? null, auto_stop: autoStop }),
   /** End-of-speech detection in the engine for a recording "Vico" already started. */
-  autoStop: () => call<AudioStatus>("POST", "/audio/auto-stop"),
+  autoStop: (patient = true) => call<AudioStatus>("POST", "/audio/auto-stop", { patient }),
+  stopAll: () => call<{ stopped: string[] }>("POST", "/agent/stop"),
   recordingStatus: () => call<AudioStatus>("GET", "/audio/status"),
   wake: () => call<{ enabled: boolean; state: string; error: string | null; woke: boolean }>("GET", "/audio/wake"),
   stopRecording: (transcribe = true) =>

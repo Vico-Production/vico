@@ -116,6 +116,8 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
   const [rotate, setRotate] = useState(false);
   const [gemini, setGemini] = useState("");
   const [groq, setGroq] = useState("");
+  const [mistral, setMistral] = useState("");
+  const [openrouter, setOpenrouter] = useState("");
   const [approval, setApproval] = useState(true);
   const [wake, setWake] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
@@ -184,6 +186,8 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
     try {
       if (gemini.trim()) await api.saveSecret("gemini", gemini.trim());
       if (groq.trim()) await api.saveSecret("groq", groq.trim());
+      if (mistral.trim()) await api.saveSecret("mistral", mistral.trim());
+      if (openrouter.trim()) await api.saveSecret("openrouter", openrouter.trim());
       const keys = await api.secrets();
       if (!keys.gemini && !keys.groq) throw new Error("Paste your Gemini access code to continue.");
       if (serverToken.trim()) await api.saveSecret("speech_server", serverToken.trim());
@@ -298,10 +302,40 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
         <input type="password" autoComplete="off" value={groq} placeholder="Optional"
           onChange={(e) => setGroq(e.target.value)} />
       </label>
+      {!first && (
+        <details className="server">
+          <summary>More free backup codes · optional</summary>
+          <p className="fine">
+            Each one is used only when the ones above are busy or down, so Vico keeps understanding you.
+          </p>
+          <label className="line-field quiet">
+            <span>
+              Mistral code {configured.mistral && <em>· saved</em>}
+              <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noreferrer">get one →</a>
+            </span>
+            <input type="password" autoComplete="off" value={mistral} placeholder="Optional"
+              onChange={(e) => setMistral(e.target.value)} />
+          </label>
+          <label className="line-field quiet">
+            <span>
+              OpenRouter code {configured.openrouter && <em>· saved</em>}
+              <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">get one →</a>
+            </span>
+            <input type="password" autoComplete="off" value={openrouter} placeholder="Optional"
+              onChange={(e) => setOpenrouter(e.target.value)} />
+          </label>
+        </details>
+      )}
       <label className="switch">
-        <input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} />
+        <input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)}
+          data-testid="ask-first" />
         <span className="track" aria-hidden="true" />
-        <span>Ask me before acting</span>
+        <span>
+          Ask me before acting
+          <em className="switch-note">
+            {approval ? " · Vico shows each step first" : " · off: Vico never asks, it just does it (deleted files go to the Recycle Bin)"}
+          </em>
+        </span>
       </label>
       <label className="switch">
         <input type="checkbox" checked={wake} onChange={(e) => setWake(e.target.checked)} data-testid="wake-word" />
@@ -375,6 +409,9 @@ function Welcome() {
 export function Prompt({ session, send }: { session: Session; send: (i: Intent) => void }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState(session.text);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const talking = useRef(false); // Space is down for talking
   const { phase } = session;
 
   // Follow what Vico heard; never overwrite the user's own typing.
@@ -400,27 +437,88 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
         }
         return;
       }
+      // Hold Space to talk (when there is nothing typed yet); letting go sends it.
+      const empty = valueRef.current.trim() === "";
+      if (e.code === "Space" && (phase === "listening" || phase === "answer" || ((phase === "typing" || phase === "question") && empty))) {
+        e.preventDefault();
+        if (!e.repeat && !talking.current) {
+          talking.current = true;
+          send({ type: "hold-talk" });
+        }
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         send(phase === "approval" ? { type: "reject" } : { type: "escape" });
       } else if (phase === "listening" && e.key === "Enter") {
         e.preventDefault();
         send({ type: "stop-listening" });
-      } else if (phase === "listening" && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      } else if ((phase === "listening" || phase === "answer") && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         setValue(e.key);
         send({ type: "type", text: e.key });
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space" && talking.current) {
+        e.preventDefault();
+        talking.current = false;
+        send({ type: "release-talk" });
+      }
+    };
+    // Letting go anywhere counts (the window can lose focus while Space is down).
+    const onBlur = () => {
+      if (talking.current) {
+        talking.current = false;
+        send({ type: "release-talk" });
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [phase, send]);
 
   if (phase === "welcome") return <Welcome />;
-  if (phase === "setup" || phase === "settings") {
+  if (phase === "answer") {
     return (
-      <div className="prompt setup-mode" data-testid="prompt">
-        <Setup key={phase} session={session} send={send} />
+      <div className="prompt answer" data-testid="prompt">
+        <div className="window-buttons">
+          <button type="button" aria-label="Close" title="Close" onClick={() => send({ type: "escape" })}
+            data-testid="close-answer">×</button>
+        </div>
+        <div className="answer-text" data-testid="answer" tabIndex={0}>
+          {session.localized && <p className="echo">{session.localized}</p>}
+          {(session.message ?? "").split("\n").map((line, i) => <p key={i}>{line}</p>)}
+        </div>
+        <Hints>
+          <Key>esc</Key> to close{session.speech && <> · hold <Key>Space</Key> to ask more</>} · or just type
+        </Hints>
+      </div>
+    );
+  }
+  if (phase === "setup" || phase === "settings") {
+    // Folded away it keeps everything typed so far: open it again to carry on.
+    return (
+      <div className={`prompt setup-mode ${session.minimized ? "folded" : ""}`} data-testid="prompt">
+        {session.minimized && (
+          <button className="setup-pill" onClick={() => send({ type: "minimize", on: false })} data-testid="unfold">
+            <span className="dot" /> {phase === "setup" ? "Finish setting up Vico" : "Vico settings"} · open
+          </button>
+        )}
+        <div className="setup-frame" hidden={session.minimized}>
+          <div className="window-buttons">
+            <button type="button" aria-label="Minimize" title="Minimize (keeps what you typed)"
+              onClick={() => send({ type: "minimize", on: true })} data-testid="minimize">–</button>
+            <button type="button" aria-label="Close" title="Close" onClick={() => send({ type: "escape" })}
+              data-testid="close-setup">×</button>
+          </div>
+          <Setup key={phase} session={session} send={send} />
+        </div>
       </div>
     );
   }
@@ -448,10 +546,13 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
           </div>
           <div className="voice-text">
             <p className="voice-title" data-testid="voice-title">
-              {phase === "listening" ? "I'm listening…" : "Catching your words…"}
+              {phase === "transcribing" ? "Catching your words…" : session.recording ? "I'm listening…"
+                : "Hold Space and talk"}
             </p>
             <p className="voice-sub">
-              {phase === "listening" ? "Take your time. I'll wait until you finish." : "One moment"}
+              {phase === "transcribing" ? "One moment"
+                : session.recording ? "Take your time. Let go of Space (or press Enter) when you're done."
+                  : "Let go when you're done. Or just start typing."}
             </p>
           </div>
         </div>
@@ -464,11 +565,12 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
           </p>
         )}
         {phase === "listening" && session.narration && !session.micHint && <p className="note">{session.narration}</p>}
+        {phase === "listening" && session.question && <p className="ask">{session.question}</p>}
         <div className="voice-actions">
           <button className="drop" onClick={() => send({ type: "type-instead" })} data-testid="type-instead">
             <span>Type instead</span>
           </button>
-          {phase === "listening" && (
+          {phase === "listening" && session.recording && (
             <button className="drop allow" onClick={() => send({ type: "stop-listening" })} data-testid="done-talking">
               <span>Done</span> <Key>⏎</Key>
             </button>
@@ -512,12 +614,9 @@ export function Prompt({ session, send }: { session: Session; send: (i: Intent) 
         {(phase === "typing" || phase === "question") && (
           <>
             <Key>⏎</Key> to go · <Key>esc</Key> to close
-            {session.speech && phase === "typing" && (
+            {session.speech && (
               <>
-                {" "}·{" "}
-                <button className="link" onClick={() => send({ type: "listen" })} data-testid="talk-instead">
-                  talk instead
-                </button>
+                {" "}· hold <Key>Space</Key> to {phase === "question" ? "answer by voice" : "talk"}
               </>
             )}
           </>

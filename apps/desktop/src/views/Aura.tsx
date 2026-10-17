@@ -168,38 +168,48 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
     }
   });
 
+  // Dragging: listeners go on at once (a quick click must still end the drag), and a click
+  // that doesn't move leaves the look where it is.
+  const latest = useRef(session);
+  latest.current = session;
   const grab = (e: ReactPointerEvent) => {
     e.preventDefault();
     (e.target as Element).setPointerCapture?.(e.pointerId);
     setDodge(false);
-    setDrag({ x: e.clientX, y: e.clientY });
-  };
-  useEffect(() => {
-    if (!drag) return;
-    const move = (e: PointerEvent) => setDrag({ x: e.clientX, y: e.clientY });
-    const up = (e: PointerEvent) => {
-      const spots = { ...session.spots };
-      const t = usableTarget(session.target, screen);
-      if (look === "possession") {
-        spots.possession_label = t && e.clientY > t.y + t.height / 2 ? 1 : 0;
-      } else if (look === "runner") {
-        spots.runner = t ? Math.max(0, Math.min(1, (e.clientX - t.x) / t.width)) : 0.3;
-      } else {
-        spots[look] = Math.max(0, Math.min(1, e.clientX / screen.width));
-      }
+    const start = { x: e.clientX, y: e.clientY };
+    setDrag(start);
+    const move = (ev: PointerEvent) => setDrag({ x: ev.clientX, y: ev.clientY });
+    const end = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
       setDrag(null);
-      if (look === "yoyo") setSettle((n) => n + 1);
       interactive.current = false;
       void native.auraInteractive?.(false);
+      if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 6) return; // just a click
+      const current = latest.current;
+      const spots = { ...current.spots };
+      const t = usableTarget(current.target, screen);
+      if (current.look === "possession") {
+        spots.possession_label = t && ev.clientY > t.y + t.height / 2 ? 1 : 0;
+      } else if (current.look === "runner") {
+        spots.runner = t ? Math.max(0, Math.min(1, (ev.clientX - t.x) / t.width)) : 0.3;
+      } else {
+        spots[current.look] = Math.max(0, Math.min(1, ev.clientX / screen.width));
+      }
+      if (current.look === "yoyo") setSettle((n) => n + 1);
       send?.({ type: "spot", spots });
     };
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up, { once: true });
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [drag !== null]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  // Moving out of the way means sliding aside, never vanishing: away from the cursor's side.
+  const aside = (homeX: number) => {
+    if (!dodge || !dodgeAt) return homeX;
+    const shifted = homeX + (dodgeAt.x < homeX ? 140 : -140);
+    return Math.max(70, Math.min(screen.width - 70, shifted));
+  };
 
   const promptOwnsText = ["setup", "settings", "transcribing", "review", "typing", "question", "approval"].includes(phase)
     || (phase === "listening" && !session.followUp);
@@ -208,7 +218,7 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
 
   let body: React.ReactNode = null;
   if (look === "peek") {
-    const home = drag ? drag.x : peekHome(screen, session.spots);
+    const home = drag ? drag.x : aside(peekHome(screen, session.spots));
     body = (
       <>
         <PeekAvatar key={`peek-${session.reactionAt}`} face={face} reaction={reaction} act={act} dodge={dodge}
@@ -221,8 +231,8 @@ export function Aura({ session, send }: { session: Session; send?: (intent: Inte
       </>
     );
   } else if (look === "yoyo") {
-    const home = drag ? drag.x : yoyoHome(screen, session.spots);
-    const length = drag ? 20 : dodge ? 6 : present ? yoyoLength(mood) : 0;
+    const home = drag ? drag.x : aside(yoyoHome(screen, session.spots));
+    const length = drag ? 20 : present ? yoyoLength(mood) : 0;
     const leftSide = home > screen.width / 2;
     body = (
       <>

@@ -252,19 +252,12 @@ describe("Vico", () => {
     await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-hidden"), { timeout: 3000 });
   });
 
-  it("listens, stops after silence, shows what it heard and goes on its own", async () => {
-    let since = 0;
+  it("records only while Space is held, then sends what it heard", async () => {
     const calls = serve((c) =>
       base(c, (call) => {
         if (call.path === "/health") return health({ speech_ready: true });
-        if (call.path === "/audio/start") {
-          since = Date.now();
-          return { recording: true, elapsed_s: 0, max_s: 15, level: 0, full: false };
-        }
-        if (call.path === "/audio/status") {
-          const e = (Date.now() - since) / 1000;
-          return { recording: true, elapsed_s: e, max_s: 15, level: e < 0.6 ? 0.5 : 0.01, full: false };
-        }
+        if (call.path === "/audio/start") return { recording: true, elapsed_s: 0, max_s: 60, level: 0, full: false };
+        if (call.path === "/audio/status") return { recording: true, elapsed_s: 1, max_s: 60, level: 0.4, full: false };
         if (call.path === "/audio/stop") {
           return { seconds: 1, transcript: { text: "Ṣí Notepad", language: "yo", provider: "gemini", model: "m",
             latency_ms: 300, confidence: null } };
@@ -275,64 +268,99 @@ describe("Vico", () => {
     );
     render(<Stage />);
     fireEvent.click(await screen.findByTestId("summon"));
-    await waitFor(() => expect((screen.getByTestId("words") as HTMLTextAreaElement).value).toBe("Ṣí Notepad"), { timeout: 4000 });
+    expect(await screen.findByTestId("voice-title")).toHaveTextContent("Hold Space and talk");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls.some((c) => c.path === "/audio/start")).toBe(false); // nothing is recorded until Space
+    fireEvent.keyDown(window, { code: "Space", key: " " });
+    await waitFor(() => expect(calls.some((c) => c.path === "/audio/start")).toBe(true));
+    expect(calls.find((c) => c.path === "/audio/start")?.body).toMatchObject({ auto_stop: false });
+    expect(await screen.findByTestId("voice-title")).toHaveTextContent("listening");
+    // a long pause never ends it: only letting go does
+    await new Promise((r) => setTimeout(r, 700));
+    expect(calls.some((c) => c.path === "/audio/stop")).toBe(false);
+    fireEvent.keyUp(window, { code: "Space", key: " " });
+    await waitFor(() => expect((screen.getByTestId("words") as HTMLTextAreaElement).value).toBe("Ṣí Notepad"));
     await waitFor(() => expect(calls.some((c) => c.path === "/agent/runs" && c.method === "POST")).toBe(true), { timeout: 4000 });
     expect(calls.find((c) => c.path === "/agent/runs")?.body).toEqual({ text: "Ṣí Notepad", language: null });
   });
 
-  it("comes up listening; a keystroke or the button switches to typing", async () => {
-    const calls = serve((c) =>
-      base(c, (call) => {
-        if (call.path === "/health") return health({ speech_ready: true });
-        if (call.path === "/audio/status") return { recording: true, elapsed_s: 0.2, max_s: 15, level: 0, full: false };
-        return undefined;
-      }),
-    );
+  it("comes up ready to listen; typing switches to the text box", async () => {
+    const calls = serve((c) => base(c, (call) => (call.path === "/health" ? health({ speech_ready: true }) : undefined)));
     render(<Stage />);
     fireEvent.click(await screen.findByTestId("summon"));
-    expect(await screen.findByTestId("voice-title")).toHaveTextContent("listening");
+    expect(await screen.findByTestId("voice-title")).toHaveTextContent("Hold Space");
     expect(screen.queryByTestId("words")).toBeNull(); // voice first: no text box
-    await waitFor(() => expect(calls.some((c) => c.path === "/audio/start")).toBe(true));
     fireEvent.keyDown(window, { key: "o" });
-    await waitFor(() => expect(calls.some((c) => c.path === "/audio/cancel")).toBe(true));
-    expect(screen.getByTestId("prompt").className).toContain("typing");
+    await waitFor(() => expect(screen.getByTestId("prompt").className).toContain("typing"));
     expect((screen.getByTestId("words") as HTMLTextAreaElement).value).toBe("o");
-    fireEvent.click(screen.getByTestId("talk-instead"));
-    fireEvent.click(await screen.findByTestId("type-instead"));
-    expect(await screen.findByTestId("words")).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/audio/start")).toBe(false);
+    fireEvent.click(screen.getByTestId("words"));
+    fireEvent.keyDown(window, { code: "Space", key: " " }); // with text typed, Space is just a space
+    expect(calls.some((c) => c.path === "/audio/start")).toBe(false);
   });
 
-  it("answers a greeting and keeps listening for the request", async () => {
-    let since = 0;
-    let starts = 0;
+  it("answers a greeting and does not listen by itself afterwards", async () => {
     const greeting = run({ state: "completed", steps: [], pending_step_id: null, language: "pcm",
       message: "How far! What can I do for you?", control: { action: "greet" } });
-    const calls = serve((c) =>
-      base(c, (call) => {
-        if (call.path === "/health") return health({ speech_ready: true });
-        if (call.path === "/audio/start") {
-          starts += 1;
-          since = Date.now();
-          return { recording: true, elapsed_s: 0, max_s: 15, level: 0, full: false };
-        }
-        if (call.path === "/audio/status") {
-          const e = (Date.now() - since) / 1000;
-          return { recording: true, elapsed_s: e, max_s: 15, level: starts === 1 && e < 0.5 ? 0.5 : 0.01, full: false };
-        }
-        if (call.path === "/audio/stop") {
-          return { seconds: 1, transcript: { text: "how far", language: "pcm", provider: "gemini", model: "m",
-            latency_ms: 300, confidence: null } };
-        }
-        if (call.path.startsWith("/agent/runs")) return greeting;
-        return undefined;
-      }),
-    );
+    const calls = serve((c) => base(c, (call) => (call.path.startsWith("/agent/runs") ? greeting : undefined)));
     render(<Stage />);
-    fireEvent.click(await screen.findByTestId("summon"));
+    await summonAndType("how far");
     expect(await screen.findByTestId("result", {}, { timeout: 6000 })).toHaveTextContent("How far!");
-    // it does not leave: it listens again (without taking the keyboard) for what you want
-    await waitFor(() => expect(starts).toBe(2), { timeout: 4000 });
-    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-listening"));
-    expect(calls.filter((c) => c.path === "/agent/runs" && c.method === "POST")).toHaveLength(1);
+    await waitFor(() => expect(screen.getByTestId("result")).toHaveTextContent("hold Space"), { timeout: 4000 });
+    expect(calls.some((c) => c.path === "/audio/start")).toBe(false);
   }, 15000);
+
+  it("Win + Alt + X (or the tray) stops everything at once", async () => {
+    const working = run({ state: "executing", pending_step_id: null, steps: [step({ status: "running" })] });
+    const calls = serve((c) => base(c, (call) => {
+      if (call.path === "/agent/stop") return { stopped: ["r1"] };
+      if (call.path.startsWith("/agent/runs")) return working;
+      return undefined;
+    }));
+    render(<Stage />);
+    await summonAndType("delete my old files");
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-working"));
+    const { emit } = await import("../lib/bus");
+    await emit("vico://stop", null);
+    await waitFor(() => expect(calls.some((c) => c.path === "/agent/stop" && c.method === "POST")).toBe(true));
+    expect(await screen.findByTestId("result")).toHaveTextContent("Stopped");
+  });
+
+  it("the setup panel can be folded away and closed", async () => {
+    serve((c) => base(c, (call) => (call.path === "/settings" && call.method === "GET"
+      ? { ...settings, onboarding_complete: false } : undefined)));
+    render(<Stage />);
+    fireEvent.click(await screen.findByTestId("look-yoyo"));
+    fireEvent.click(screen.getByTestId("minimize"));
+    expect(await screen.findByTestId("unfold")).toHaveTextContent("Finish setting up Vico");
+    fireEvent.click(screen.getByTestId("unfold"));
+    expect(screen.getByTestId("look-yoyo")).toHaveAttribute("aria-checked", "true"); // nothing was lost
+    fireEvent.click(screen.getByTestId("close-setup"));
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-hidden"), { timeout: 3000 });
+  });
+
+  it("a long explanation opens to read until it is closed", async () => {
+    const steps = "1. Click Text at the top.\n2. Choose Auto captions.\n3. Pick English and press Create.\n" +
+      "4. Wait for the captions to appear on the timeline, then drag them to line up with the speech.";
+    const answer = run({ state: "completed", steps: [], pending_step_id: null, message: steps.repeat(2) });
+    serve((c) => base(c, (call) => (call.path.startsWith("/agent/runs") ? answer : undefined)));
+    render(<Stage />);
+    await summonAndType("how do I add captions in capcut");
+    expect(await screen.findByTestId("answer", {}, { timeout: 5000 })).toHaveTextContent("Auto captions");
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(screen.getByTestId("answer")).toBeInTheDocument(); // still there to read
+    fireEvent.click(screen.getByTestId("close-answer"));
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-hidden"), { timeout: 3000 });
+  });
+
+  it("asked to stay, it stays after answering", async () => {
+    const stay = run({ state: "completed", steps: [], pending_step_id: null, message: "I'll stay right here.",
+      control: { action: "stay" } });
+    serve((c) => base(c, (call) => (call.path.startsWith("/agent/runs") ? stay : undefined)));
+    render(<Stage />);
+    await summonAndType("stay on the screen until I say you can go");
+    await waitFor(() => expect(screen.getByTestId("aura").className).toContain("phase-staying"), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(screen.getByTestId("aura").className).toContain("phase-staying");
+  }, 12000);
 });

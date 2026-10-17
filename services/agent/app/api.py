@@ -73,6 +73,11 @@ class AudioStartRequest(StrictModel):
     language: Language | None = None  # None: detect from the speech
     # The engine decides when the user has finished speaking and starts transcribing at once.
     auto_stop: bool = False
+    patient: bool = True  # wait 3.5 s of silence (no key to let go), not 1.5 s
+
+
+class AutoStopRequest(StrictModel):
+    patient: bool = True
 
 
 class AudioStopRequest(StrictModel):
@@ -365,14 +370,14 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
                     "description": registry.get(n).description} for n in registry.names()])
 
     # --- audio ---------------------------------------------------------------------------
-    def arm_endpointing(request: Request, s: Services) -> None:
+    def arm_endpointing(request: Request, s: Services, patient: bool = True) -> None:
         """Watch the recording; when the user has finished speaking, stop and transcribe at once."""
         stop_listening_job(s)
         job: dict[str, Any] = {"stage": "recording", "heard": False}
         s.listening = job
 
         async def watch() -> None:
-            endpoint = Endpointer()
+            endpoint = Endpointer(patient)
             try:
                 while s.recorder.active:
                     status = s.recorder.status()
@@ -414,16 +419,16 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         s = svc(request)
         s.recorder.start(body.language.value if body.language else None)
         if body.auto_stop:
-            arm_endpointing(request, s)
+            arm_endpointing(request, s, body.patient)
         return ok(audio_state(s))
 
     @app.post(f"{API_PREFIX}/audio/auto-stop")
-    async def audio_auto_stop(request: Request):
+    async def audio_auto_stop(request: Request, body: AutoStopRequest | None = None):
         """End-of-speech detection for a recording that is already running (started by "Vico")."""
         s = svc(request)
         if not s.recorder.active:
             raise VicoError(ErrorCode.CONFLICT, "Not recording.", status=409)
-        arm_endpointing(request, s)
+        arm_endpointing(request, s, body.patient if body else True)
         return ok(audio_state(s))
 
     def audio_state(s: Services) -> dict[str, Any]:

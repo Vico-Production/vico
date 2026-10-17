@@ -17,6 +17,7 @@ import uvicorn
 
 from app.api import create_app
 from app.config import data_dir
+from app.platform import quiet
 from app.security.redaction import redact_text
 
 HOST = "127.0.0.1"
@@ -59,6 +60,7 @@ def main() -> None:
         print("VICO_TOKEN must be set by the Vico app", file=sys.stderr)
         sys.exit(2)
     _configure_logging()
+    quiet.install()  # background helpers never flash a window on screen
     sock = _free_socket()
     port = sock.getsockname()[1]
     config = uvicorn.Config(create_app(token), log_config=None, access_log=False, lifespan="on")

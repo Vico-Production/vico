@@ -204,7 +204,7 @@ class UnsupportedPlan(StrictModel):
 
 class DonePlan(StrictModel):
     kind: Literal["done"]
-    message: str = Field(min_length=1, max_length=1000)
+    message: str = Field(min_length=1, max_length=4000)  # explanations can be step-by-step
 
 
 class ControlPlan(StrictModel):

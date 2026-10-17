@@ -437,6 +437,10 @@ class Orchestrator:
             plan = await self._plan(run, ctx)
             ctx.language = run.language
             if isinstance(plan, DonePlan):
+                asked = control.loose(run.text) if not run.steps else None
+                if asked:  # "OK, I'll stay" in words only: do it, don't just say it
+                    self._control(run, asked, run.language)
+                    return
                 run.message = plan.message  # already in the user's language
                 run.set_state(RunState.COMPLETED, "Done")
                 return
@@ -621,6 +625,10 @@ class Orchestrator:
         result = await self._execute(run, ctx, pf, step)
         if not locating.done():
             locating.cancel()
+        if step.tool == "click_on_screen" and {"x", "y"} <= set(result.data):
+            # where it actually clicked, now that it has looked
+            step.stage = stage._stage((result.data["x"] - 14, result.data["y"] - 14, 28, 28), "element")
+            run.touch()
         run.set_state(RunState.VERIFYING, step.tool)
         step.message, step.verification, step.verified = result.message, result.verification, result.verified
         step.data, step.observation = result.data, result.observation or result.message
