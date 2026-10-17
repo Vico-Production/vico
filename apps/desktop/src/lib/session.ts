@@ -121,6 +121,14 @@ export const INITIAL: Session = {
   spots: {},
 };
 
+/** Where the prompt window goes for this session (a small pill when setup is folded away). */
+export function frameFor(state: Session, screen: { width: number; height: number }): Rect {
+  if (state.minimized && ["setup", "settings"].includes(state.phase)) {
+    return { x: screen.width - 296, y: screen.height - 76, width: 280, height: 56 };
+  }
+  return promptFrame(state.look, state.phase, moodFor(state.phase), screen, state.target, state.spots);
+}
+
 /** What the look should be doing in each phase. */
 export function moodFor(phase: Phase): Mood {
   switch (phase) {
@@ -280,10 +288,7 @@ export class VicoDriver {
   private async placePrompt() {
     if (!this.promptWanted()) return;
     const screen = { width: window.innerWidth, height: window.innerHeight };
-    const folded = this.state.minimized && ["setup", "settings"].includes(this.state.phase);
-    const frame = folded
-      ? { x: screen.width - 296, y: screen.height - 76, width: 280, height: 56 } // a small pill, bottom right
-      : promptFrame(this.look, this.state.phase, moodFor(this.state.phase), screen, this.state.target, this.spots);
+    const frame = frameFor(this.state, screen);
     await this.windows.placePrompt?.(frame);
   }
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { emit, listen } from "../lib/bus";
-import { promptFrame, type Rect } from "../lib/layout";
+import type { Rect } from "../lib/layout";
 import { native } from "../lib/native";
-import { INITIAL, INTENT_EVENT, STATE_EVENT, VicoDriver, moodFor, type Intent, type Session } from "../lib/session";
+import { INITIAL, INTENT_EVENT, STATE_EVENT, VicoDriver, frameFor, type Intent, type Session } from "../lib/session";
 import { Aura } from "./Aura";
 import { Prompt } from "./Prompt";
 
@@ -78,7 +78,7 @@ export function Stage() {
     };
   }, [driver]);
   const screen = { width: window.innerWidth, height: window.innerHeight };
-  const frame = promptFrame(session.look, session.phase, moodFor(session.phase), screen, session.target, session.spots);
+  const frame = frameFor(session, screen);
   const b = deskWindow();
   return (
     <div className="stage" data-testid="stage">
