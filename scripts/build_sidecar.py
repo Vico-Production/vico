@@ -52,13 +52,17 @@ def main() -> None:
         "--collect-submodules", "keyring.backends",
         "--hidden-import", "send2trash",
         "--collect-all", "vosk",  # loaded lazily by the wake phrase listener, with its native library
+        "--collect-submodules", "ddgs",  # its search engines are loaded by name at run time
+        "--hidden-import", "lxml.html",
+        "--hidden-import", "PIL.ImageGrab",
         "--add-data", f"{model}{os.pathsep}models/{model.name}",
         "--exclude-module", "tkinter",
         "--exclude-module", "pytest",
     ]
     if sys.platform == "win32":
         args += ["--noconsole", "--collect-submodules", "pywinauto", "--collect-submodules", "comtypes",
-                 "--hidden-import", "win32timezone"]
+                 "--hidden-import", "win32timezone", "--hidden-import", "win32clipboard",
+                 "--collect-submodules", "pycaw"]
     if importlib.util.find_spec("_sounddevice_data"):
         args += ["--collect-data", "_sounddevice_data"]
     args.append(str(AGENT / "vico_agent_entry.py"))

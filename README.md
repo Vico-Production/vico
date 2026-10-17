@@ -14,13 +14,16 @@ Vico runs on Windows 10/11 and Linux (macOS later). Heavy AI work runs on Google
 
 | | |
 |---|---|
-| Summon | Say anything with **"Vico"** in it ("Hey Vico", "Vico wassup", "Vico how far", "Vico, open Notepad"), press **Win + Alt + V**, or click the tray icon. It listens from the moment it is installed; nothing to switch on. (If another app owns the shortcut, Vico uses Ctrl + Alt + V; the tray menu shows which.) |
-| Talk | Vico comes up listening. Take your time: it waits for you to finish (a longer pause), shows what it heard, and goes on its own unless you start editing. After a task, or a greeting, it keeps listening about 10 seconds for your next request without taking your keyboard. |
-| Type instead | Press **Type instead**, or just start typing. The microphone stops and your typing takes over. |
-| Talk to Vico itself | "Stay" or "don't go yet" (it stays and dozes until called), "you can go", "move to the left / top corner / out of my way", "put your label at the bottom" (Possession), "talk to me" / "just text" (spoken replies on or off; text by default). Any wording, in any of the four languages; talking as part of a task ("talk to my friend on WhatsApp") is a task. You can also drag it by its handle: Peek's hands, the yo-yo's anchor, Possession's label, the swarm's nest, the runner, the Lens. It moves out of the way when your mouse slows down near it. |
-| Approve | **Enter** to allow, **Esc** to stop. Risky steps (delete, commands, uploads, sends) need **Enter held down**. |
+| Call Vico | Press **Win + Alt + V**, click the tray icon, or say anything with **"Vico"** in it ("Hey Vico", "Vico how far", "Vico, open Notepad"). (If another app owns the shortcut, Vico uses Ctrl + Alt + V; the tray menu shows which.) |
+| Talk | **Hold Space** while you talk and let go when you're done; Vico never cuts you off on a pause. A quick tap does nothing. Called by name ("Vico, ..."), it waits for a 3.5-second pause instead (or press Enter). It shows what it heard, then goes. After a task it never listens by itself: hold Space again for the next request. |
+| Type instead | Just start typing. |
+| Stop | **Win + Alt + X** (or Ctrl + Alt + X), the tray's **Stop what Vico is doing**, or say **"Vico, stop"**: every task stops at once, including a command in the middle of running. |
+| Talk to Vico itself | "Stay on the screen (until I say so)" (it stays and dozes until called), "you can go", "move to the left / top corner / out of my way", "put your label at the bottom" (Possession), "talk to me" / "just text" (spoken replies on or off; text by default). Any wording, in any of the four languages; talking as part of a task ("talk to my friend on WhatsApp") is a task. Drag a look by its handle: Peek's hands, the yo-yo's anchor, Possession's label, the swarm's nest, the runner, the Lens. It slides aside when your mouse slows down near it. |
+| What it can do | Open any installed app (Store apps such as Claude and WhatsApp included), files and folders, websites; type, press keys and click in any app; volume, brightness and music keys; copy and paste between apps; screenshots of the screen, a window, half the screen, a pixel area or an area you drag, saved to Pictures/Vico Screenshots; email drafts with attachments (Thunderbird, Outlook or your mail app, or Gmail in Vico's browser); see your screen to explain what you are looking at or do it for you; research on the web without opening your browser. |
+| Asking you | When something is unclear, can't be found, or fails, Vico asks you (aloud if it is talking to you) and continues with your answer, spoken or typed. "Never mind" stops. It never opens a different app than the one you named: it asks "did you mean ...?" instead. CAPTCHAs ("I'm not a robot") are for you: Vico pauses and continues when you say it's done. |
+| Approve | With **Ask me before acting** on: **Enter** to allow, **Esc** to stop; risky steps (delete, commands, uploads, sends) need **Enter held down**. With it off, Vico never asks, except a delete, send or command right after it read a web page or file in the same task (such text could be written to trick it). Payments and passwords are never done either way. Deleted files go to the Recycle Bin / Trash. |
 | Leave | **Esc** at any time. A running task is cancelled. |
-| Settings | There is no settings button. Ask Vico to **open its settings**, by voice or typing ("open your settings", "change my key", "change your look", "open your settings make I change am"); plain "open settings" opens the computer's Settings. There: your looks, the Gemini code, an optional Groq code, "ask me before acting", the wake word, and **Remove my codes and start over**. Vico starts when you sign in; untick it in the tray menu (which has only Summon, Start when I sign in, and Quit). |
+| Settings | There is no settings button. Ask Vico to **open its settings**, by voice or typing ("open your settings", "change my key", "change your look", "open your settings make I change am"); plain "open settings" opens the computer's Settings. There: your looks, the Gemini code, an optional Groq code, more optional backup codes (Mistral, OpenRouter, TinyFish), "ask me before acting", the wake word, your speech server, and **Remove my codes and start over**. The settings panel can be minimised (keeping what you typed) or closed. Vico starts when you sign in; untick it in the tray menu. |
 
 ## How it works
 
@@ -71,6 +74,19 @@ Measured on this Windows laptop with the real engine and a free Gemini key (medi
 Also: the app waits for each change instead of polling, the AI connection is warmed when Vico is summoned or
 woken, the app list is scanned once at start, the engine itself hears when you stop speaking, and the avatar
 reacts before any network call returns. Approvals, safety checks and verification are unchanged.
+
+## Without Gemini
+
+Gemini is the first choice, never the only one:
+
+| Job | In order |
+|---|---|
+| Understanding and answers | Gemini, Groq (free gpt-oss / Qwen models), Mistral (Free plan), OpenRouter (free models) |
+| Hearing you | Gemini, your own speech server (NaijaVox-2.0 or Meta Omnilingual), Groq Whisper (every language), Mistral Voxtral (English). A provider slower than 5 s gets the next one started alongside it |
+| Speaking | Gemini TTS (English, Hausa, Igbo, Pidgin with an English voice), your speech server (YarnGPT: Yorùbá too), the computer's own voice (English, offline) |
+| Web research | Keyless search engines, TinyFish (optional code), Gemini's Google Search, then the AI's own knowledge (labelled) |
+
+Recordings are cleaned first (rumble filter, background-noise reduction in noisy rooms, silence trimmed, quiet voices raised), and the names of your installed apps and open windows go with them as spelling hints, so "Claude" is not heard as "cloud".
 
 ## Free Gemini limits
 
@@ -174,6 +190,10 @@ Language labels in the app stay "untested" until benchmark results exist.
 - Uninstalling Vico removes your saved access codes, settings and chosen look, so reinstalling starts fresh. Automatic updates keep them. On Linux, use "Remove my codes and start over" in Settings before removing the package.
 - Nothing goes to a cloud provider until you allow cloud processing. Each provider's terms are linked in Settings. Google's free tier may use data to improve its products.
 - During a task, text from files or web pages that Vico reads is sent to the provider to plan the next step. With approval on, you see each read first.
+- Looking at the screen (look_at_screen, click_on_screen) sends a picture of your whole screen to your AI provider (Gemini). Vico does this only for a request that needs it.
+- Web research sends the search words to free search engines (DuckDuckGo, Bing, Brave, Mojeek, Yahoo, through the open-source ddgs library) or to TinyFish if you added its code, and reads the result pages from this computer. Keyless search engines can refuse very frequent searches for a while; Vico then answers from what the AI knows and says it was not checked online.
+- When Gemini is busy or out of free quota, requests go to the next provider you set up (Groq, Mistral, OpenRouter), each under its own terms.
+- On Windows, background helpers (the app list, volume, brightness, voice, commands you ask for) run with no window popping up.
 - API keys live in Windows Credential Manager or your Linux keyring, never in Vico's files or the UI.
 - History stores a short description, tool, approval and result — not audio, file contents or full transcripts — and can be cleared.
 

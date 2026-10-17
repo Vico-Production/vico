@@ -573,6 +573,12 @@ fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
 }
 
 pub fn run() {
+    // Linux: WebKitGTK's DMA-BUF renderer crashes or draws nothing on many graphics drivers
+    // (NVIDIA, virtual machines, some Intel). The plain renderer works everywhere.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     let sidecar = Arc::new(Sidecar::new());
     let http = reqwest::Client::builder()
         .no_proxy()

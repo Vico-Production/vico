@@ -1,0 +1,44 @@
+name: Linux smoke test
+
+# Installs the real Ubuntu package and starts Vico on a desktop with no screen attached:
+# Vico must still be running 40 seconds later, and its engine must have started.
+on:
+  workflow_run:
+    workflows: ["Release installers"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test (e.g. v0.1.0-beta.7)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download the .deb
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir pkg
+      - name: Install it (and a virtual desktop)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./pkg/*.deb xvfb dbus-x11 xdotool gnome-keyring
+      - name: Start Vico and keep it running for 40 seconds
+        run: |
+          set +e
+          export XDG_SESSION_TYPE=x11
+          dbus-run-session -- bash -c '
+            echo "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null 2>&1
+            xvfb-run -a -s "-screen 0 1366x768x24" timeout 40 vico > vico.out 2>&1
+            echo "exit=$?" >> vico.out'
+          tail -n 80 vico.out
+          echo "--- engine log"
+          tail -n 80 ~/.local/share/vico/vico-agent.log 2>/dev/null || echo "(no engine log)"
+          grep -q "exit=124" vico.out || { echo "::error::Vico stopped before 40 seconds"; exit 1; }
+          test -f ~/.local/share/vico/vico-agent.log || { echo "::error::The engine never started"; exit 1; }

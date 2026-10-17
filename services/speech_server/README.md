@@ -6,6 +6,24 @@ A small HTTP service you run on a Linux machine you control. It makes Vico bette
 |---|---|---|---|---|
 | Listen | Meta Omnilingual ASR `omniASR_CTC_300M` | Apache-2.0 | 1.3 GB | Yoruba, Hausa, Igbo (and English) speech when Gemini is resting or unavailable |
 | Speak | YarnGPT2b + WavTokenizer | Apache-2.0 + MIT | 0.73 GB + 1.75 GB | Answers read aloud in Nigerian English, Yoruba, Igbo and Hausa voices |
+| Listen (best, needs a GPU) | NaijaVox-2.0 (Whisper large-v3 fine-tuned on Nigerian speech) | Apache-2.0 | 3.1 GB | Published word error rates: Pidgin 14.7%, Nigerian English 19.6%, Yoruba 22.3%, Hausa 25.8%, Igbo 30.5% (50 samples each, from its model card) |
+
+## Where to run it (free)
+
+| Host | What you get free | Good for |
+|---|---|---|
+| [Modal](https://modal.com) (recommended for NaijaVox) | $30 of compute a month, no card. A T4 GPU is about $0.59/hour, so roughly 50 hours awake; it sleeps after 5 quiet minutes | NaijaVox: about a second per request once awake; 30-60 s for the first request after a sleep. `deploy/modal_app.py` |
+| [Oracle Cloud Always Free](https://www.oracle.com/cloud/free/) | Since mid-2026: 2 Arm CPU cores and 12 GB memory (halved from 4 cores / 24 GB), no GPU | Omnilingual ASR CTC 300M only. NaijaVox and YarnGPT are too slow on 2 CPU cores to be useful for commands |
+
+Deploy to Modal:
+
+```bash
+pip install modal && modal setup
+modal secret create vico-speech VICO_SPEECH_TOKEN=$(python -c "import secrets;print(secrets.token_urlsafe(32))")
+modal deploy deploy/modal_app.py
+```
+
+Then in Vico ask it to open its settings, open **Your speech server**, and paste the `https://...modal.run` address and the token.
 
 Vico itself still runs on Windows or any Linux distro; only this server needs Linux. Vico calls it over HTTPS with a token. It is used only after you accepted Vico's cloud disclosure, and audio is processed in memory and never written to disk on either side.
 

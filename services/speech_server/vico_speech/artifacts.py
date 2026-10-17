@@ -3,7 +3,8 @@
 Every file comes from the publisher's own Hugging Face repository at a fixed commit and
 is verified before use: LFS files by SHA-256 (as published in the repository's file
 listing), small files by their git blob SHA-1. A file that does not match is deleted
-and the server refuses to start. Checked against the repositories on 2026-10-15.
+and the server refuses to start. Checked against the repositories on 2026-10-15
+(NaijaVox-2.0 on 2026-10-17).
 """
 
 from __future__ import annotations
@@ -70,7 +71,35 @@ WAVTOKENIZER_CONFIG = Artifact(
     license="MIT",
 )
 
+# NaijaVox-2.0 (Apache-2.0): Whisper large-v3 fine-tuned for Yoruba, Hausa, Igbo, Nigerian
+# Pidgin and Nigerian English (published WER: Pidgin 14.7%, English 19.6%, Yoruba 22.3%,
+# Hausa 25.8%, Igbo 30.5%). Needs a GPU to be fast: about 1.5 billion parameters.
+NAIJAVOX_REPO = "Axiveri/NaijaVox-2.0"
+NAIJAVOX_REVISION = "22b94de94e59419cc9d6e25e6eaeceb1f1c42d00"
+NAIJAVOX_MODEL = Artifact(
+    repo=NAIJAVOX_REPO,
+    revision=NAIJAVOX_REVISION,
+    filename="model.safetensors",
+    size=3_087_136_096,
+    sha256="7d026e7088605bf2cfa35c8e00985ab4284f6a02ef29e80c2d2465556a6309f7",
+    license="Apache-2.0",
+)
+NAIJAVOX_FILES = (  # small files, by git blob SHA-1
+    Artifact(NAIJAVOX_REPO, NAIJAVOX_REVISION, "config.json", 1_225, git_sha1="7dae54dcf2b7441005ddc35756071e3899b05e9b"),
+    Artifact(NAIJAVOX_REPO, NAIJAVOX_REVISION, "generation_config.json", 203,
+             git_sha1="83c0143653f573939612e8c6e28d68f6e1eca026"),
+    Artifact(NAIJAVOX_REPO, NAIJAVOX_REVISION, "preprocessor_config.json", 340,
+             git_sha1="931c77a740890c46365c7ae0c9d350ba3cca908f"),
+    Artifact(NAIJAVOX_REPO, NAIJAVOX_REVISION, "processor_config.json", 410,
+             git_sha1="22755f693c72f1a96070a4fa82465ca007d5ab91"),
+    Artifact(NAIJAVOX_REPO, NAIJAVOX_REVISION, "tokenizer.json", 3_931_010,
+             git_sha1="30aa56235b1e59abfd56522389c9a0b8b219114c"),
+    Artifact(NAIJAVOX_REPO, NAIJAVOX_REVISION, "tokenizer_config.json", 2_069,
+             git_sha1="539cee294546d951e1f9ab6ba75cdfecb6040bb3"),
+)
+
 ASR_ARTIFACTS = (OMNI_CTC_300M, OMNI_TOKENIZER)
+NAIJAVOX_ARTIFACTS = (NAIJAVOX_MODEL, *NAIJAVOX_FILES)
 VOICE_ARTIFACTS = (YARN_MODEL, WAVTOKENIZER_CKPT, WAVTOKENIZER_CONFIG)
 
 # YarnGPT's MIT-licensed helper code, pinned to a commit.

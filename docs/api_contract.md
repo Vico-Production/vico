@@ -35,13 +35,14 @@ Language tags: `en`, `yo`, `ha`, `ig`, `pcm` (experimental).
 | GET | `/agent/runs/current` | | the most recent `Run`, or null |
 | GET | `/agent/runs/{id}` | | `Run` |
 | GET | `/agent/runs/{id}/wait?after=N&timeout=15` | | `Run`, as soon as its `version` is no longer `N` (or after `timeout` s): the desktop app follows runs this way instead of polling |
+| POST | `/agent/stop` | | `{stopped: [run ids]}`; every unfinished task stops now (a running command is killed). Also "Vico, stop" heard by the wake listener |
 | POST | `/warm` | | `{warming}`; Vico was summoned or woken: checks the connection, opens the AI connection, refreshes the app list |
 | POST | `/agent/runs/{id}/decision` | `{step_id, approved, confirm}` | `Run`; `confirm: true` required for `confirm_required` steps |
 | POST | `/agent/runs/{id}/reply` | `{answer}` | `Run` (answers a clarification) |
 | POST | `/agent/runs/{id}/cancel` | | `Run` |
 | GET | `/agent/tools` | | tool names, categories, risk levels |
 | POST | `/audio/start` | `{language?, auto_stop?}` | recorder status (omit `language` to detect it). With `auto_stop` the engine ends the recording when the user has finished speaking and transcribes at once |
-| POST | `/audio/auto-stop` | | end-of-speech detection for a recording already running (started by the wake word) |
+| POST | `/audio/auto-stop` | `{patient?}` | end-of-speech detection for a recording already running (started by the wake word); `patient` (default true) waits for a 3.5 s pause |
 | GET | `/audio/status` | | `{recording, elapsed_s, max_s, level, full, silent, device}`; `silent` = every microphone gives digital silence. With `auto_stop` also `{stage: recording\|transcribing\|ready, heard, result?, error?}` |
 | POST | `/audio/stop` | `{transcribe}` | `{seconds, transcript}`; audio is discarded afterwards |
 | POST | `/audio/cancel` | | stops and discards |
@@ -96,3 +97,11 @@ Risk levels: `auto` (metadata reads), `standard` (asks when approval is on), `co
 
 `look` (current look), `looks` (the picked looks), `rotate` (take turns: each new summon uses the next one),
 `spots` (where each look was dragged or sent), `voice_replies` (off by default), `wake_word` (on by default).
+
+## Tools added in this version
+
+`set_volume`, `set_brightness`, `media_key`, `clipboard_get`, `clipboard_set`, `screenshot`, `compose_email`,
+`click_at`, `scroll`, `look_at_screen`, `click_on_screen`, `browser_upload`, `web_lookup` (`{query, purpose?, deep?}`).
+Secrets accepted by `/secrets/{name}`: `gemini`, `groq`, `mistral`, `openrouter`, `tinyfish`, `speech_server`.
+Plans may be `{"kind":"unsupported", "never": true}` (payments, passwords, CAPTCHAs); any other unsupported plan
+becomes a question to the user.

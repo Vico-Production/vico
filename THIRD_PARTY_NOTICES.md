@@ -33,6 +33,14 @@ cd apps/desktop/src-tauri && cargo install cargo-about && cargo about generate a
 | Gemini 3.8 Flash / Flash-Lite TTS (cloud API, user's own key, free tier) | spoken replies in English, Hausa, Igbo | Google API terms |
 | Windows SAPI / espeak-ng (system voices, not bundled) | offline English replies | part of Windows / GPL-3.0 (system package) |
 | Windows Magnification API (part of Windows) | the Lens look | part of Windows |
+| ddgs (deedy5/ddgs) | keyless web search | MIT |
+| lxml | reading web pages | BSD-3-Clause |
+| primp | HTTP client used by ddgs | MIT |
+| Pillow | screenshots and cropping | MIT-CMU (HPND) |
+| NumPy | cleaning recordings | BSD-3-Clause |
+| pycaw | Windows volume control | MIT |
+| NaijaVox-2.0 (optional, on the user's speech server) | Nigerian speech recognition | Apache-2.0 |
+| Mistral, OpenRouter, TinyFish (cloud APIs, user's own optional keys) | fallbacks and web search | each provider's terms |
 | Playwright for Python (bundles a Node.js driver) | browser control | Apache-2.0 |
 | pywinauto (+ comtypes, pywin32) | Windows desktop control | BSD-3-Clause / MIT / PSF |
 | pytest, ruff, mypy, PyInstaller | development and packaging | MIT / MIT / MIT / GPL-2.0 with bootloader exception |

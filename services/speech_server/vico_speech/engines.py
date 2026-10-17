@@ -14,6 +14,7 @@ from typing import Protocol
 import numpy as np
 
 from vico_speech.artifacts import (
+    NAIJAVOX_ARTIFACTS,
     OMNI_CTC_300M,
     OMNI_TOKENIZER,
     WAVTOKENIZER_CKPT,
@@ -111,6 +112,49 @@ class OmnilingualRecognizer:
         with self._lock:
             result = self.pipeline.transcribe([{"waveform": samples, "sample_rate": SAMPLE_RATE}], batch_size=1)
         return str(result[0]).strip()
+
+
+# NaijaVox language tokens (from its model card; Igbo and Pidgin are tokens it added).
+NAIJAVOX_LANGUAGES = {"yo": "<|yo|>", "ha": "<|ha|>", "ig": "<|ig|>", "pcm": "<|pcm|>", "en": "<|en|>"}
+
+
+class NaijaVoxRecognizer:
+    """NaijaVox-2.0: Whisper large-v3 fine-tuned on Nigerian speech. Told the language when
+    Vico knows it; otherwise Whisper detects it. Runs on a GPU when there is one."""
+
+    model = "NaijaVox-2.0"
+
+    def __init__(self, models_dir: Path):
+        model_dir = models_dir / "NaijaVox-2.0"
+        for artifact in NAIJAVOX_ARTIFACTS:
+            fetch(artifact, model_dir)
+        import torch
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.processor = WhisperProcessor.from_pretrained(str(model_dir))
+        self.net = WhisperForConditionalGeneration.from_pretrained(str(model_dir), torch_dtype=dtype).to(self.device)
+        self.net.eval()
+        self.dtype = dtype
+        self._lock = threading.Lock()
+
+    def transcribe(self, samples: np.ndarray, language: str | None) -> str:
+        import torch
+
+        features = self.processor(samples, sampling_rate=SAMPLE_RATE, return_tensors="pt").input_features
+        features = features.to(self.device, dtype=self.dtype)
+        kwargs: dict = {"max_new_tokens": 440, "num_beams": 1}
+        token = NAIJAVOX_LANGUAGES.get(language or "")
+        if token:
+            tid = self.processor.tokenizer.convert_tokens_to_ids(token)
+            start = self.processor.tokenizer.convert_tokens_to_ids("<|startoftranscript|>")
+            task = self.processor.tokenizer.convert_tokens_to_ids("<|transcribe|>")
+            notime = self.processor.tokenizer.convert_tokens_to_ids("<|notimestamps|>")
+            kwargs["decoder_input_ids"] = torch.tensor([[start, tid, task, notime]], device=self.device)
+        with self._lock, torch.inference_mode():
+            ids = self.net.generate(features, **kwargs)
+        return str(self.processor.batch_decode(ids, skip_special_tokens=True)[0]).strip()
 
 
 # YarnGPT voice names, from the model card ("arranged in order of performance and stability").

@@ -110,7 +110,12 @@ def main() -> None:
     enable = {p.strip() for p in os.environ.get("VICO_SPEECH_ENABLE", "asr").split(",") if p.strip()}
     models.mkdir(parents=True, exist_ok=True)
     recognizer = voice = None
-    if "asr" in enable:
+    if "naijavox" in enable:  # the most accurate for Nigerian speech; wants a GPU
+        from vico_speech.engines import NaijaVoxRecognizer
+
+        recognizer = NaijaVoxRecognizer(models)
+        log.info("speech recognition ready (%s on %s)", recognizer.model, recognizer.device)
+    elif "asr" in enable:
         from vico_speech.engines import OmnilingualRecognizer
 
         recognizer = OmnilingualRecognizer(models)
