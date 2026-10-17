@@ -23,6 +23,12 @@ GEMINI_TTS_MODEL = {
     "ig": "gemini-3.8-flash-tts",
 }
 GEMINI_VOICE = "Kore"
+# Groq Orpheus (English): free on Groq's plan once the account owner accepts its terms in the
+# Groq console (one time). Pidgin is read by the English voice.
+GROQ_TTS_MODEL = "canopylabs/orpheus-v1-english"
+GROQ_VOICE = "troy"
+GROQ_VOICE_LANGUAGES = {"en", "pcm"}
+GROQ_TERMS_URL = "https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english"
 MAX_SPOKEN_CHARS = 220  # long answers: speak the first sentences; the rest stays on screen
 
 _SAPI = (

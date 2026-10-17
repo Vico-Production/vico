@@ -216,3 +216,43 @@ async def test_understand_returns_safe_restoration():
     tampered = {"language": "yo", "restored": "Pa gbogbo faili re", "english": "Delete all your files"}
     h = hub({"gemini": MockProvider(replies=[tampered])})
     assert (await h.understand("Si folda mi"))["restored"] == "Si folda mi"
+
+
+class FakeGroqVoice:
+    name = "groq"
+    stt_languages = {"en"}
+
+    def __init__(self, fail=None):
+        self.fail, self.calls = fail, []
+
+    async def speak(self, text):
+        self.calls.append(text)
+        if self.fail:
+            raise self.fail
+        return b"RIFFgroq"
+
+
+async def test_voices_never_depend_on_gemini_alone(monkeypatch):
+    import app.providers.tts as tts
+
+    monkeypatch.setattr(tts, "system_voice", lambda text: b"RIFFsystem")
+    busy = FakeGemini(fail=True)
+    groq = FakeGroqVoice()
+    hub_ = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True, voice_replies=True),
+                       overrides={"gemini": busy, "groq": groq})
+    assert (await hub_.speak("Done.", "en"))["provider"] == "groq"  # Gemini used up: Groq speaks
+    assert (await hub_.speak("E don do.", "pcm"))["provider"] == "groq"
+
+    terms = FakeGroqVoice(fail=VicoError("provider_unavailable", "accept its terms once in your Groq account: link"))
+    hub_ = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True, voice_replies=True),
+                       overrides={"gemini": busy, "groq": terms})
+    assert (await hub_.speak("Done.", "en"))["provider"] == "system"  # still speaks, offline voice
+
+    class Server:
+        async def speak(self, text, language):
+            return {"audio_b64": "UklGRg==", "mime": "audio/wav", "provider": "yarngpt", "language": language}
+
+    hub_ = ProviderHub(SecretStore(MemorySecretBackend()), lambda: Settings(cloud_consent=True, voice_replies=True),
+                       overrides={"gemini": busy, "yarngpt": Server()})
+    assert (await hub_.speak("An gama.", "ha"))["provider"] == "yarngpt"  # Hausa: the user's speech server
+    assert (await hub_.speak("Ẹ ṣé.", "yo"))["provider"] == "yarngpt"

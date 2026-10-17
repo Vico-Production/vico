@@ -140,6 +140,27 @@ class GroqProvider:
         return Transcript(text=text.strip(), language=language or detected or "en", provider=self.name,
                           model=model, latency_ms=int((time.monotonic() - started) * 1000))
 
+    async def speak(self, text: str) -> bytes:
+        """English speech from Groq Orpheus (WAV, in memory)."""
+        from app.providers.tts import GROQ_TERMS_URL, GROQ_TTS_MODEL, GROQ_VOICE
+
+        if self.name != "groq":
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, f"{self.name} has no voice.")
+        try:
+            r = await self.client.post(f"{self.base_url}/audio/speech", headers=self._headers, timeout=30,
+                                       json={"model": GROQ_TTS_MODEL, "input": text[:4000], "voice": GROQ_VOICE,
+                                             "response_format": "wav"})
+        except httpx.HTTPError as exc:
+            raise VicoError(ErrorCode.OFFLINE, "Groq's voice could not be reached.", retryable=True) from exc
+        if r.status_code == 400 and "terms" in r.text:
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "To use Groq's free voice, accept its terms once in "
+                            f"your Groq account: {GROQ_TERMS_URL}")
+        if r.status_code == 429:
+            raise VicoError(ErrorCode.RATE_LIMITED, "Groq's voice is resting.", retryable=True, retry_after_s=20)
+        if r.status_code >= 400 or not r.content.startswith(b"RIFF"):
+            raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, f"Groq's voice failed ({r.status_code}).", retryable=True)
+        return r.content
+
     async def complete(self, system: str, user: str, *, json_mode: bool) -> Completion:
         async def attempt(model: str, tracker: QuotaTracker) -> str:
             body: dict = {"model": model, "temperature": 0,

@@ -217,38 +217,53 @@ class ProviderHub:
         return bool(self.settings().voice_replies)
 
     async def speak(self, text: str, language: str) -> dict[str, Any]:
-        """Speak a reply in the user's language, from the best free voice available.
+        """Speak a reply in the user's language from the first voice that works, so a used-up or
+        resting Gemini key never silences Vico:
 
-        Yorùbá: YarnGPT on the user's speech server (Gemini TTS does not list Yorùbá). English,
-        Hausa and Igbo: Gemini TTS with the user's key; Pidgin with an English voice. Offline
-        English: the computer's own voice."""
+        English, Pidgin: Gemini TTS, Groq Orpheus, the user's speech server (YarnGPT), the
+        computer's own voice. Hausa, Igbo: Gemini TTS, the speech server. Yorùbá: the speech
+        server (no free cloud voice lists Yorùbá). Pidgin is spoken by English voices."""
         if not self.settings().voice_replies:
             raise VicoError(ErrorCode.UNSUPPORTED, "Voice replies are switched off.")
         part = tts.spoken_part(text)
         started = time.monotonic()
-        if language == "yo":
-            voice = self.overrides.get("yarngpt")
-            server = self.speech_server() if voice is None else None
-            if voice is None and server is None:
-                raise VicoError(ErrorCode.UNSUPPORTED, "Yorùbá voice replies need your speech server.")
-            return await (voice or VoiceProvider(server)).speak(part, language)  # type: ignore[arg-type]
-        gemini = self.provider("gemini") if self.settings().cloud_consent else None
+        cloud = self.settings().cloud_consent
+        notes: list[str] = []
+
+        def done(audio: bytes, provider: str, model: str) -> dict[str, Any]:
+            return {"audio_b64": base64.b64encode(audio).decode("ascii"), "mime": "audio/wav",
+                    "provider": provider, "model": model, "spoken": part,
+                    "latency_ms": int((time.monotonic() - started) * 1000)}
+
+        gemini = self.provider("gemini") if cloud else None
         model = tts.GEMINI_TTS_MODEL.get(language)
         if gemini is not None and model:
             try:
-                audio = await gemini.speak(part, model)
-                return {"audio_b64": base64.b64encode(audio).decode("ascii"), "mime": "audio/wav",
-                        "provider": "gemini", "model": model, "spoken": part,
-                        "latency_ms": int((time.monotonic() - started) * 1000)}
+                return done(await gemini.speak(part, model), "gemini", model)
             except VicoError:
-                pass  # rate-limited or offline: fall back below where possible
+                pass  # resting, used up or offline: the next voice
+        groq = self.provider("groq") if cloud else None
+        if groq is not None and language in tts.GROQ_VOICE_LANGUAGES and hasattr(groq, "speak"):
+            try:
+                return done(await groq.speak(part), "groq", tts.GROQ_TTS_MODEL)
+            except VicoError as exc:
+                if "terms" in exc.message.lower():
+                    notes.append(exc.message)
+        voice = self.overrides.get("yarngpt")
+        server = self.speech_server() if voice is None and cloud else None
+        if (voice or server) and language in ("en", "yo", "ha", "ig", "pcm"):
+            try:
+                return await (voice or VoiceProvider(server)).speak(part, "en" if language == "pcm" else language)  # type: ignore[arg-type]
+            except VicoError:
+                pass
         if language in ("en", "pcm"):
             audio_bytes = await asyncio.to_thread(tts.system_voice, part)
             if audio_bytes:
-                return {"audio_b64": base64.b64encode(audio_bytes).decode("ascii"), "mime": "audio/wav",
-                        "provider": "system", "model": "system voice", "spoken": part,
-                        "latency_ms": int((time.monotonic() - started) * 1000)}
-        raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "No voice is available for this reply right now.")
+                return done(audio_bytes, "system", "system voice")
+        if language == "yo" and not (voice or server):
+            raise VicoError(ErrorCode.UNSUPPORTED, "Yorùbá voice replies need your speech server.")
+        raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, " ".join(notes) or "No voice is available for this reply "
+                        "right now, so it stays as text.")
 
     async def speech_server_health(self) -> dict[str, Any]:
         self.require_consent()

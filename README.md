@@ -83,7 +83,7 @@ Gemini is the first choice, never the only one:
 |---|---|
 | Understanding and answers | Gemini, Groq (free gpt-oss / Qwen models), Mistral (Free plan), OpenRouter (free models) |
 | Hearing you | Gemini, your own speech server (NaijaVox-2.0 or Meta Omnilingual), Groq Whisper (every language), Mistral Voxtral (English). A provider slower than 5 s gets the next one started alongside it |
-| Speaking | Gemini TTS (English, Hausa, Igbo, Pidgin with an English voice), your speech server (YarnGPT: Yorùbá too), the computer's own voice (English, offline) |
+| Speaking | English and Pidgin: Gemini TTS, Groq Orpheus (free; accept its terms once in your Groq account), your speech server (YarnGPT), the computer's own voice (offline). Hausa and Igbo: Gemini TTS, your speech server. Yorùbá: your speech server. Switch it on or off in any words ("I go like hear your voice", "no need to talk again") |
 | Web research | Keyless search engines, TinyFish (optional code), Gemini's Google Search, then the AI's own knowledge (labelled) |
 
 Recordings are cleaned first (rumble filter, background-noise reduction in noisy rooms, silence trimmed, quiet voices raised), and the names of your installed apps and open windows go with them as spelling hints, so "Claude" is not heard as "cloud".

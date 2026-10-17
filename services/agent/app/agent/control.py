@@ -133,10 +133,32 @@ _TASK_WORDS = re.compile(r"\b(?:open|create|make|delete|remove|send|play|search|
                          r"download|install|turn|set|take|show|read|click|go to|email|call)\b", re.I)
 
 
+_LOOSE_VOICE_ON = re.compile(
+    r"\b(?:hear (?:your|ya) voice|(?:with|in|use|using) (?:your|ya) voice|talk to me|speak to me|talk back|"
+    r"speak (?:out|aloud|up)|(?:answer|reply|respond)(?: me)? (?:aloud|out loud|by voice|with voice)|read (?:it|them|"
+    r"your answers?) (?:aloud|out loud)|dey talk|make i hear (?:your )?voice|say it out)\b", re.I)
+_VOICE_TASK_WORDS = re.compile(_TASK_WORDS.pattern.replace("make|", ""), re.I)  # "make I hear your voice"
+_LOOSE_VOICE_OFF = re.compile(
+    r"\b(?:stop (?:talking|speaking)|(?:no|don'?t|do not) need (?:your|ya) voice|no (?:dey )?talk|don'?t (?:talk|speak)|just text|text only|only text|"
+    r"(?:no|without) (?:your )?voice|be quiet|keep quiet|shut up|mute (?:yourself|your voice)|"
+    r"(?:reply|answer|respond)(?: me)? (?:in|with|by) text|no need to (?:talk|speak))\b", re.I)
+
+
 def loose(text: str) -> dict[str, Any] | None:
-    """When the AI only answered in words, was the request still about Vico staying or going?
-    Used as a safety net so "stay on the screen until I say so" is obeyed, not just agreed to."""
-    if _TASK_WORDS.search(text) or len(text.split()) > 20:
+    """When the AI only answered in words, was the request still about Vico itself (stay, go,
+    or its voice)? A safety net so "I want to hear your voice, oya talk to me" or "stay on the
+    screen until I say so" is acted on, not just agreed to."""
+    if len(text.split()) > 20:
+        return None
+    # Talking as part of a task ("talk to my friend on WhatsApp") is never about Vico's voice.
+    task = _VOICE_TASK_WORDS.search(text) or re.search(r"\b(?:to|with) (?:my|our|his|her|the) \w+|\bon (?:whatsapp|"
+                                                  r"telegram|zoom|teams|phone)\b|\bcall\b", text, re.I)
+    if not task:
+        if _LOOSE_VOICE_OFF.search(text):
+            return {"action": "voice", "value": "off"}
+        if _LOOSE_VOICE_ON.search(text):
+            return {"action": "voice", "value": "on"}
+    if _TASK_WORDS.search(text):
         return None
     if _LOOSE_GO.search(text):
         return {"action": "go"}
