@@ -33,7 +33,7 @@ PROVIDERS = ("gemini", "groq", "mistral", "openrouter")
 PROVIDER_CLASSES: dict[str, Any] = {"gemini": GeminiProvider, "groq": GroqProvider, "mistral": MistralProvider,
                                     "openrouter": OpenRouterProvider}
 # Keys the user can store: the cloud providers and the token of their own speech server.
-SECRET_NAMES = (*PROVIDERS, "speech_server")
+SECRET_NAMES = (*PROVIDERS, "speech_server", "tinyfish")  # tinyfish: free web search and page reading
 # Speech-to-text order: Gemini, the user's speech server, Groq Whisper, Mistral Voxtral (English).
 STT_ORDER = ("gemini", "omnilingual", "groq", "mistral")
 HOSTS = {"groq": "api.groq.com", "gemini": "generativelanguage.googleapis.com", "mistral": "api.mistral.ai",

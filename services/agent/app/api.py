@@ -29,6 +29,7 @@ from app.contracts import API_PREFIX, ErrorCode, Language, StrictModel, VicoErro
 from app.interpreter.languages import capabilities
 from app.platform import get_platform
 from app.platform.base import PlatformAdapter
+from app.providers import web as web_research
 from app.providers.registry import SECRET_NAMES, ProviderHub
 from app.providers.speech_server import _clean_url
 from app.security.secret_store import SecretStore
@@ -179,6 +180,7 @@ def create_app(token: str, services: Services | None = None) -> FastAPI:
         warm = asyncio.create_task(app.state.services.hub.warm())
         # Scan the Start Menu (or .desktop files) once now, not on the first "open ...".
         threading.Thread(target=app.state.services.platform.refresh_apps, daemon=True).start()
+        threading.Thread(target=web_research.warm, daemon=True).start()
         sync_wake(app.state.services)
         yield
         warm.cancel()

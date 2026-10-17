@@ -118,6 +118,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
   const [groq, setGroq] = useState("");
   const [mistral, setMistral] = useState("");
   const [openrouter, setOpenrouter] = useState("");
+  const [tinyfish, setTinyfish] = useState("");
   const [approval, setApproval] = useState(true);
   const [wake, setWake] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
@@ -188,6 +189,7 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
       if (groq.trim()) await api.saveSecret("groq", groq.trim());
       if (mistral.trim()) await api.saveSecret("mistral", mistral.trim());
       if (openrouter.trim()) await api.saveSecret("openrouter", openrouter.trim());
+      if (tinyfish.trim()) await api.saveSecret("tinyfish", tinyfish.trim());
       const keys = await api.secrets();
       if (!keys.gemini && !keys.groq) throw new Error("Paste your Gemini access code to continue.");
       if (serverToken.trim()) await api.saveSecret("speech_server", serverToken.trim());
@@ -323,6 +325,15 @@ function Setup({ session, send }: { session: Session; send: (i: Intent) => void 
             </span>
             <input type="password" autoComplete="off" value={openrouter} placeholder="Optional"
               onChange={(e) => setOpenrouter(e.target.value)} />
+          </label>
+          <label className="line-field quiet">
+            <span>
+              TinyFish code · Vico already searches the web without it; this makes searches faster and steadier
+              {configured.tinyfish && <em> · saved</em>}
+              <a href="https://agent.tinyfish.ai/api-keys" target="_blank" rel="noreferrer">get one →</a>
+            </span>
+            <input type="password" autoComplete="off" value={tinyfish} placeholder="Optional"
+              onChange={(e) => setTinyfish(e.target.value)} data-testid="tinyfish-code" />
           </label>
         </details>
       )}

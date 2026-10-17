@@ -20,6 +20,7 @@ dependencies = [
     "numpy>=2.0",
     "pillow>=10.4",
     "pycaw>=20240316 ; sys_platform == 'win32'",
+    "ddgs>=9",
 ]
 
 [dependency-groups]

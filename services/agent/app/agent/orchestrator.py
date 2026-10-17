@@ -36,6 +36,7 @@ from app.agent.schemas import (
 from app.config import APPROVAL_TIMEOUT_S, MAX_TEXT_INPUT_CHARS, TOOL_TIMEOUT_S, data_dir
 from app.contracts import TERMINAL_STATES, ErrorCode, Language, RunState, VicoError
 from app.platform.base import PlatformAdapter
+from app.providers import web
 from app.providers.base import parse_json_text
 from app.providers.registry import ProviderHub
 from app.security.paths import PathPolicy
@@ -281,6 +282,7 @@ class Orchestrator:
         paths.workspace.mkdir(parents=True, exist_ok=True)
         return ToolContext(settings=settings, paths=paths, platform=self.platform, browser=self.browser,
                            summarizer=self.hub.summarize, vision=self.hub.see if self.hub.can_see() else None,
+                           lookup=functools.partial(web.look_up, self.hub),
                            language=run.language, cancel=run.cancel)
 
     async def _drive(self, run: Run) -> None:

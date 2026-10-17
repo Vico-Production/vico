@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import time
+from typing import Any
 
 import httpx
 
@@ -139,6 +140,28 @@ class GeminiProvider:
                                 f"Gemini returned no answer{f' ({reason})' if reason else ''}.", status=502) from exc
 
         return await self.models.run(await self.chain(kind), attempt, audio_seconds)
+
+    async def grounded(self, prompt: str) -> tuple[str, list[str]]:
+        """An answer using Gemini's built-in Google Search, with the pages it used."""
+        body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "tools": [{"google_search": {}}],
+                "generationConfig": {"temperature": 0}}
+        captured: dict[str, Any] = {}
+
+        async def attempt(model: str, tracker: QuotaTracker) -> str:
+            req = self.client.build_request("POST", f"{BASE_URL}/models/{model}:generateContent",
+                                            headers=self._headers, json=body, timeout=30)
+            data = await send(self.client, self.name, tracker, req)
+            try:
+                cand = data["candidates"][0]
+                captured["meta"] = cand.get("groundingMetadata", {})
+                return "".join(p.get("text", "") for p in cand["content"]["parts"])
+            except (KeyError, IndexError, TypeError) as exc:
+                raise VicoError(ErrorCode.PROVIDER_UNAVAILABLE, "Gemini returned no answer.", status=502) from exc
+
+        text, _ = await self.models.run(await self.chain("llm"), attempt)
+        chunks = captured.get("meta", {}).get("groundingChunks", []) or []
+        sources = [c.get("web", {}).get("uri", "") for c in chunks if isinstance(c, dict)]
+        return text.strip(), [s for s in sources if s][:5]
 
     async def see(self, image_jpeg: bytes, question: str) -> str:
         """Answer a question about a picture of the screen."""

@@ -40,6 +40,7 @@ class ToolResult(StrictModel):
 
 Summarizer = Callable[[str, str], Awaitable[str]]
 Vision = Callable[[bytes, str], Awaitable[str]]  # (JPEG image, question) -> answer
+Lookup = Callable[[str, "str | None", bool], Awaitable[dict[str, Any]]]  # (query, purpose, deep) -> answer
 
 
 @dataclass
@@ -50,6 +51,7 @@ class ToolContext:
     browser: BrowserController | None = None
     summarizer: Summarizer | None = None
     vision: Vision | None = None
+    lookup: Lookup | None = None
     language: str = "en"
     cancel: asyncio.Event = field(default_factory=asyncio.Event)
     tainted: bool = False  # this task has read untrusted text (a page, file or command output)
